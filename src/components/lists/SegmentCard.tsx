@@ -1,20 +1,16 @@
 import Link from "next/link";
-import { SegmentVisibility } from "@/generated/prisma/enums";
-import { SEGMENT_VISIBILITY_LABELS } from "@/lib/labels";
 
 export function SegmentCard({
   id,
   name,
   description,
-  visibility,
-  ownerName,
+  assigneeName,
   count,
 }: {
   id: string;
   name: string;
   description: string | null;
-  visibility: SegmentVisibility;
-  ownerName: string;
+  assigneeName: string | null;
   count: number;
 }) {
   return (
@@ -26,17 +22,15 @@ export function SegmentCard({
         <h3 className="font-medium text-slate-900">{name}</h3>
         <span
           className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-            visibility === SegmentVisibility.SHARED
-              ? "bg-sky-100 text-sky-700"
-              : "bg-slate-100 text-slate-600"
+            assigneeName ? "bg-indigo-100 text-indigo-700" : "bg-slate-100 text-slate-500"
           }`}
         >
-          {SEGMENT_VISIBILITY_LABELS[visibility]}
+          {assigneeName ? assigneeName : "Unassigned"}
         </span>
       </div>
       {description && <p className="mt-1 line-clamp-2 text-sm text-slate-500">{description}</p>}
       <p className="mt-2 text-xs text-slate-400">
-        {count} contact{count === 1 ? "" : "s"} · {ownerName}
+        {count} contact{count === 1 ? "" : "s"}
       </p>
     </Link>
   );

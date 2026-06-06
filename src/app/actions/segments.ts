@@ -4,7 +4,6 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
-import { SegmentVisibility } from "@/generated/prisma/enums";
 
 export async function createSegment(formData: FormData) {
   const user = await requireUser();
@@ -13,20 +12,32 @@ export async function createSegment(formData: FormData) {
   if (!name) throw new Error("List name is required");
 
   const description = (formData.get("description") as string)?.trim() || null;
-  const visibility =
-    (formData.get("visibility") as SegmentVisibility) ?? SegmentVisibility.SHARED;
+  const assigneeId = (formData.get("assigneeId") as string)?.trim() || null;
 
   const segment = await prisma.segment.create({
-    data: { name, description, visibility, ownerId: user.id },
+    data: { name, description, ownerId: user.id, assigneeId },
   });
 
   revalidatePath("/lists");
+  revalidatePath("/dashboard");
   redirect(`/lists/${segment.id}`);
+}
+
+/** Reassign a list to a person (or null to unassign). */
+export async function setSegmentAssignee(segmentId: string, assigneeId: string | null) {
+  await requireUser();
+  await prisma.segment.update({
+    where: { id: segmentId },
+    data: { assigneeId: assigneeId || null },
+  });
+  revalidatePath(`/lists/${segmentId}`);
+  revalidatePath("/lists");
+  revalidatePath("/dashboard");
 }
 
 export async function deleteSegment(segmentId: string) {
   const user = await requireUser();
-  // Only the owner can delete their list.
+  // Only the creator can delete their list.
   await prisma.segment.deleteMany({ where: { id: segmentId, ownerId: user.id } });
   revalidatePath("/lists");
   redirect("/lists");

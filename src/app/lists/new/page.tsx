@@ -1,12 +1,13 @@
 import Link from "next/link";
+import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
 import { createSegment } from "@/app/actions/segments";
-import { SEGMENT_VISIBILITY_LABELS } from "@/lib/labels";
 
 export const dynamic = "force-dynamic";
 
 export default async function NewListPage() {
-  await requireUser();
+  const user = await requireUser();
+  const users = await prisma.user.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } });
 
   return (
     <div className="mx-auto max-w-xl px-4 py-8">
@@ -35,20 +36,22 @@ export default async function NewListPage() {
           />
         </label>
 
-        <fieldset>
-          <legend className="mb-1.5 block text-sm font-medium text-slate-700">Visibility</legend>
-          <div className="flex gap-3">
-            {Object.entries(SEGMENT_VISIBILITY_LABELS).map(([k, v], i) => (
-              <label key={k} className="flex items-center gap-2 text-sm">
-                <input type="radio" name="visibility" value={k} defaultChecked={i === 0} />
-                {v}
-                <span className="text-xs text-slate-400">
-                  {k === "SHARED" ? "(both of you)" : "(only you)"}
-                </span>
-              </label>
+        <label className="block">
+          <span className="mb-1.5 block text-sm font-medium text-slate-700">Assign to</span>
+          <select
+            name="assigneeId"
+            defaultValue={user.id}
+            className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-slate-900 focus:outline-none"
+          >
+            <option value="">Unassigned (team)</option>
+            {users.map((u) => (
+              <option key={u.id} value={u.id}>
+                {u.name}
+                {u.id === user.id ? " (me)" : ""}
+              </option>
             ))}
-          </div>
-        </fieldset>
+          </select>
+        </label>
 
         <div className="flex items-center gap-2 pt-2">
           <button

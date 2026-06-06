@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
-import { SegmentVisibility } from "@/generated/prisma/enums";
 import { SegmentCard } from "@/components/lists/SegmentCard";
 
 export const dynamic = "force-dynamic";
@@ -9,20 +8,18 @@ export const dynamic = "force-dynamic";
 export default async function ListsPage() {
   const user = await requireUser();
 
-  // Visible lists: mine (any visibility) + everyone's SHARED lists.
+  // Everyone sees all lists; assignment decides whose queue they belong to.
   const segments = await prisma.segment.findMany({
-    where: {
-      OR: [{ ownerId: user.id }, { visibility: SegmentVisibility.SHARED }],
-    },
     orderBy: { name: "asc" },
     include: {
-      owner: { select: { name: true } },
+      assignee: { select: { id: true, name: true } },
       _count: { select: { contacts: true } },
     },
   });
 
-  const mine = segments.filter((s) => s.ownerId === user.id);
-  const shared = segments.filter((s) => s.ownerId !== user.id);
+  const mine = segments.filter((s) => s.assigneeId === user.id);
+  const others = segments.filter((s) => s.assigneeId && s.assigneeId !== user.id);
+  const unassigned = segments.filter((s) => !s.assigneeId);
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-8">
@@ -36,37 +33,43 @@ export default async function ListsPage() {
         </Link>
       </div>
 
-      <Section title="My lists" empty="You haven't made any lists yet.">
+      <Section title="Assigned to me" empty="Nothing assigned to you yet.">
         {mine.map((s) => (
-          <SegmentCard
-            key={s.id}
-            id={s.id}
-            name={s.name}
-            description={s.description}
-            visibility={s.visibility}
-            ownerName={s.owner.name}
-            count={s._count.contacts}
-          />
+          <SegmentCard key={s.id} {...cardProps(s)} />
         ))}
       </Section>
 
-      {shared.length > 0 && (
-        <Section title="Shared lists" empty="">
-          {shared.map((s) => (
-            <SegmentCard
-              key={s.id}
-              id={s.id}
-              name={s.name}
-              description={s.description}
-              visibility={s.visibility}
-              ownerName={s.owner.name}
-              count={s._count.contacts}
-            />
+      {others.length > 0 && (
+        <Section title="Assigned to the team" empty="">
+          {others.map((s) => (
+            <SegmentCard key={s.id} {...cardProps(s)} />
           ))}
         </Section>
       )}
+
+      <Section title="Unassigned" empty="">
+        {unassigned.map((s) => (
+          <SegmentCard key={s.id} {...cardProps(s)} />
+        ))}
+      </Section>
     </div>
   );
+}
+
+function cardProps(s: {
+  id: string;
+  name: string;
+  description: string | null;
+  assignee: { name: string } | null;
+  _count: { contacts: number };
+}) {
+  return {
+    id: s.id,
+    name: s.name,
+    description: s.description,
+    assigneeName: s.assignee?.name ?? null,
+    count: s._count.contacts,
+  };
 }
 
 function Section({
@@ -78,18 +81,17 @@ function Section({
   empty: string;
   children: React.ReactNode;
 }) {
-  const items = Array.isArray(children) ? children : [children];
-  const hasItems = items.some(Boolean) && items.length > 0;
+  const items = (Array.isArray(children) ? children : [children]).filter(Boolean);
+  const hasItems = items.length > 0;
+  if (!hasItems && !empty) return null;
   return (
     <section className="mb-8">
-      <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-400">
-        {title}
-      </h2>
+      <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-400">{title}</h2>
       {hasItems ? (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">{children}</div>
-      ) : empty ? (
+      ) : (
         <p className="text-sm text-slate-400">{empty}</p>
-      ) : null}
+      )}
     </section>
   );
 }

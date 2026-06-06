@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { ContactStatus, ContactType } from "@/generated/prisma/enums";
-import { CONTACT_STATUS_LABELS, CONTACT_TYPE_LABELS, SEGMENT_VISIBILITY_LABELS } from "@/lib/labels";
+import { CONTACT_STATUS_LABELS, CONTACT_TYPE_LABELS } from "@/lib/labels";
 
 interface ContactFormData {
   id: string;
@@ -23,7 +23,7 @@ export function ContactForm({
   selectedSegmentIds = [],
 }: {
   action: (formData: FormData) => void;
-  segments: { id: string; name: string; visibility: string }[];
+  segments: { id: string; name: string }[];
   contact?: ContactFormData;
   selectedSegmentIds?: string[];
 }) {
@@ -102,9 +102,6 @@ export function ContactForm({
                   defaultChecked={selectedSegmentIds.includes(s.id)}
                 />
                 {s.name}
-                <span className="text-xs text-slate-400">
-                  {SEGMENT_VISIBILITY_LABELS[s.visibility as keyof typeof SEGMENT_VISIBILITY_LABELS]}
-                </span>
               </label>
             ))}
           </div>

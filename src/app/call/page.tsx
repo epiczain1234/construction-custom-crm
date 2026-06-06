@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
-import { SegmentVisibility } from "@/generated/prisma/enums";
 import { endOfDay } from "@/lib/scheduling";
 
 export const dynamic = "force-dynamic";
@@ -11,12 +10,11 @@ export default async function CallPickerPage() {
 
   // Fetch lists and the "due now" counts in parallel. The due counts are a single
   // grouped query (one round-trip) instead of one count per list (N+1).
-  const [segments, dueGroups] = await Promise.all([
+  const [allSegments, dueGroups] = await Promise.all([
     prisma.segment.findMany({
-      where: { OR: [{ ownerId: user.id }, { visibility: SegmentVisibility.SHARED }] },
       orderBy: { name: "asc" },
       include: {
-        owner: { select: { name: true } },
+        assignee: { select: { id: true, name: true } },
         _count: { select: { contacts: true } },
       },
     }),
@@ -26,6 +24,11 @@ export default async function CallPickerPage() {
       _count: { contactId: true },
     }),
   ]);
+
+  // Show my lists first, then unassigned, then the rest.
+  const rank = (assigneeId: string | null) =>
+    assigneeId === user.id ? 0 : assigneeId == null ? 1 : 2;
+  const segments = [...allSegments].sort((a, b) => rank(a.assigneeId) - rank(b.assigneeId));
 
   const dueBySegment = new Map(dueGroups.map((g) => [g.segmentId, g._count.contactId]));
 
@@ -53,7 +56,8 @@ export default async function CallPickerPage() {
                 <div>
                   <h2 className="font-medium text-slate-900">{s.name}</h2>
                   <p className="text-xs text-slate-400">
-                    {s._count.contacts} contacts · {s.owner.name}
+                    {s._count.contacts} contacts ·{" "}
+                    {s.assignee ? (s.assignee.id === user.id ? "You" : s.assignee.name) : "Unassigned"}
                   </p>
                 </div>
                 <div className="text-right">

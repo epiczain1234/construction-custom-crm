@@ -25,25 +25,25 @@ async function main() {
   const sharedProspects = await prisma.segment.create({
     data: {
       name: "Cold Prospects",
-      description: "Shared cold-calling list — everyone works it.",
-      visibility: "SHARED",
+      description: "Shared cold-calling list — unassigned, anyone can work it.",
       ownerId: zain.id,
+      assigneeId: null,
     },
   });
   const zainGCs = await prisma.segment.create({
     data: {
       name: "Zain — GCs",
       description: "General contractors Zain is working.",
-      visibility: "PRIVATE",
       ownerId: zain.id,
+      assigneeId: zain.id,
     },
   });
   await prisma.segment.create({
     data: {
       name: "Alejandro — Suppliers",
-      description: "Suppliers Alejandro is working.",
-      visibility: "PRIVATE",
-      ownerId: alejandro.id,
+      description: "Suppliers for Alejandro to call.",
+      ownerId: zain.id,
+      assigneeId: alejandro.id,
     },
   });
 

@@ -1,9 +1,4 @@
-import {
-  CallOutcome,
-  ContactStatus,
-  ContactType,
-  SegmentVisibility,
-} from "@/generated/prisma/enums";
+import { CallOutcome, ContactStatus, ContactType } from "@/generated/prisma/enums";
 
 export const CONTACT_TYPE_LABELS: Record<ContactType, string> = {
   CLIENT: "Client",
@@ -35,11 +30,6 @@ export const CONTACT_STATUS_STYLES: Record<ContactStatus, string> = {
   CALLBACK: "bg-violet-100 text-violet-800 ring-violet-200",
   WON: "bg-green-600 text-white ring-green-700",
   DEAD: "bg-slate-200 text-slate-500 ring-slate-300",
-};
-
-export const SEGMENT_VISIBILITY_LABELS: Record<SegmentVisibility, string> = {
-  PRIVATE: "Private",
-  SHARED: "Shared",
 };
 
 export interface OutcomeButton {

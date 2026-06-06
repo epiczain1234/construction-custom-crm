@@ -2,12 +2,12 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
-import { SegmentVisibility } from "@/generated/prisma/enums";
 import { StatusBadge } from "@/components/contacts/StatusBadge";
 import { AddToListForm } from "@/components/lists/AddToListForm";
+import { AssigneeSelect } from "@/components/lists/AssigneeSelect";
 import { setSegmentMembership } from "@/app/actions/contacts";
 import { deleteSegment } from "@/app/actions/segments";
-import { SEGMENT_VISIBILITY_LABELS, CONTACT_TYPE_LABELS } from "@/lib/labels";
+import { CONTACT_TYPE_LABELS } from "@/lib/labels";
 import { formatDue } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
@@ -20,12 +20,13 @@ export default async function ListDetailPage({
   const user = await requireUser();
   const { id } = await params;
 
-  // Both queries are independent — run them in one parallel round-trip.
-  const [segment, allContacts] = await Promise.all([
+  // Independent queries — run them in one parallel round-trip.
+  const [segment, allContacts, users] = await Promise.all([
     prisma.segment.findUnique({
       where: { id },
       include: {
         owner: { select: { id: true, name: true } },
+        assignee: { select: { id: true, name: true } },
         contacts: {
           include: { contact: true },
           orderBy: { contact: { nextFollowUpAt: { sort: "asc", nulls: "last" } } },
@@ -36,6 +37,7 @@ export default async function ListDetailPage({
       orderBy: { firstName: "asc" },
       select: { id: true, firstName: true, lastName: true, company: true },
     }),
+    prisma.user.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }),
   ]);
   if (!segment) notFound();
 
@@ -60,22 +62,15 @@ export default async function ListDetailPage({
 
       <div className="mt-2 flex items-start justify-between gap-4">
         <div>
-          <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-semibold text-slate-900">{segment.name}</h1>
-            <span
-              className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                segment.visibility === SegmentVisibility.SHARED
-                  ? "bg-sky-100 text-sky-700"
-                  : "bg-slate-100 text-slate-600"
-              }`}
-            >
-              {SEGMENT_VISIBILITY_LABELS[segment.visibility]}
-            </span>
-          </div>
+          <h1 className="text-2xl font-semibold text-slate-900">{segment.name}</h1>
           {segment.description && (
             <p className="text-sm text-slate-500">{segment.description}</p>
           )}
-          <p className="text-xs text-slate-400">Owned by {segment.owner.name}</p>
+          <div className="mt-2 flex items-center gap-2 text-sm text-slate-500">
+            <span className="text-xs uppercase tracking-wide text-slate-400">Assigned to</span>
+            <AssigneeSelect segmentId={segment.id} assigneeId={segment.assigneeId} users={users} />
+          </div>
+          <p className="mt-1 text-xs text-slate-400">Created by {segment.owner.name}</p>
         </div>
         <div className="flex shrink-0 gap-2">
           {segment.contacts.length > 0 && (

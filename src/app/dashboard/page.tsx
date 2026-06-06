@@ -9,32 +9,53 @@ export const dynamic = "force-dynamic";
 export default async function DashboardPage() {
   const user = await requireUser();
   const now = new Date();
+  const dueBefore = endOfDay(now);
 
-  // "My" follow-ups: contacts I own (or unassigned), due today or overdue.
-  const ownerFilter = { OR: [{ ownerId: user.id }, { ownerId: null }] };
+  // Contacts that are "mine" = those on a list assigned to me.
+  const mineFilter = { segments: { some: { segment: { assigneeId: user.id } } } };
 
-  // Run both queries in parallel — one round-trip's worth of latency instead of two.
-  const [due, upcomingCount] = await Promise.all([
+  const [myLists, due, dueGroups, otherUsers] = await Promise.all([
+    // Lists assigned to me, with total contact counts.
+    prisma.segment.findMany({
+      where: { assigneeId: user.id },
+      orderBy: { name: "asc" },
+      include: { _count: { select: { contacts: true } } },
+    }),
+    // My follow-ups due today / overdue.
     prisma.contact.findMany({
-      where: {
-        AND: [ownerFilter, { nextFollowUpAt: { lte: endOfDay(now) } }],
-      },
+      where: { AND: [mineFilter, { nextFollowUpAt: { lte: dueBefore } }] },
       orderBy: { nextFollowUpAt: "asc" },
       select: {
-        id: true,
-        firstName: true,
-        lastName: true,
-        company: true,
-        phone: true,
-        type: true,
-        status: true,
-        nextFollowUpAt: true,
+        id: true, firstName: true, lastName: true, company: true,
+        phone: true, type: true, status: true, nextFollowUpAt: true,
       },
     }),
-    prisma.contact.count({
-      where: { AND: [ownerFilter, { nextFollowUpAt: { gt: endOfDay(now) } }] },
+    // Due-now counts per list (one grouped query) for the list cards.
+    prisma.contactSegment.groupBy({
+      by: ["segmentId"],
+      where: { contact: { nextFollowUpAt: { lte: dueBefore } } },
+      _count: { contactId: true },
     }),
+    // The rest of the team, for the overview.
+    prisma.user.findMany({ where: { id: { not: user.id } }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
   ]);
+
+  const dueBySegment = new Map(dueGroups.map((g) => [g.segmentId, g._count.contactId]));
+
+  // Team overview: per teammate, how many lists + due calls they have.
+  const team = await Promise.all(
+    otherUsers.map(async (u) => {
+      const [lists, dueCount] = await Promise.all([
+        prisma.segment.count({ where: { assigneeId: u.id } }),
+        prisma.contact.count({
+          where: {
+            AND: [{ segments: { some: { segment: { assigneeId: u.id } } } }, { nextFollowUpAt: { lte: dueBefore } }],
+          },
+        }),
+      ]);
+      return { ...u, lists, dueCount };
+    }),
+  );
 
   const startToday = startOfDay(now).getTime();
   const contacts: DueContact[] = due.map((c) => ({
@@ -50,10 +71,8 @@ export default async function DashboardPage() {
     <div className="mx-auto max-w-4xl px-4 py-8">
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-slate-900">
-            Hi {user.name} 👋
-          </h1>
-          <p className="text-sm text-slate-500">Here&apos;s who needs a follow-up.</p>
+          <h1 className="text-2xl font-semibold text-slate-900">Hi {user.name} 👋</h1>
+          <p className="text-sm text-slate-500">Here&apos;s your work for today.</p>
         </div>
         <Link
           href="/call"
@@ -66,10 +85,83 @@ export default async function DashboardPage() {
       <div className="mb-6 grid grid-cols-3 gap-3">
         <Stat label="Overdue" value={overdueCount} accent="text-rose-600" />
         <Stat label="Due today" value={todayCount} accent="text-slate-900" />
-        <Stat label="Upcoming" value={upcomingCount} accent="text-slate-400" />
+        <Stat label="My lists" value={myLists.length} accent="text-indigo-600" />
       </div>
 
-      <DueList contacts={contacts} />
+      {/* My assigned lists */}
+      <section className="mb-8">
+        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-400">
+          My lists
+        </h2>
+        {myLists.length === 0 ? (
+          <p className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-400">
+            No lists assigned to you. <Link href="/lists" className="underline">Browse lists</Link> or
+            ask to be assigned one.
+          </p>
+        ) : (
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            {myLists.map((s) => {
+              const dueCount = dueBySegment.get(s.id) ?? 0;
+              return (
+                <Link
+                  key={s.id}
+                  href={`/call/${s.id}`}
+                  className="flex items-center justify-between rounded-xl border border-slate-200 bg-white p-4 transition-colors hover:border-emerald-600"
+                >
+                  <div>
+                    <h3 className="font-medium text-slate-900">{s.name}</h3>
+                    <p className="text-xs text-slate-400">{s._count.contacts} contacts</p>
+                  </div>
+                  <div className="text-right">
+                    {dueCount > 0 && (
+                      <span className="rounded-full bg-rose-100 px-2 py-0.5 text-xs font-medium text-rose-700">
+                        {dueCount} due
+                      </span>
+                    )}
+                    <span className="ml-2 text-emerald-600">→</span>
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
+        )}
+      </section>
+
+      {/* My due follow-ups */}
+      <section className="mb-8">
+        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-400">
+          Follow-ups due
+        </h2>
+        <DueList contacts={contacts} />
+      </section>
+
+      {/* Team overview */}
+      {team.length > 0 && (
+        <section>
+          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-400">
+            Team
+          </h2>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            {team.map((u) => (
+              <div
+                key={u.id}
+                className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-4"
+              >
+                <span className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-900 text-sm font-semibold text-white">
+                  {u.name.slice(0, 1).toUpperCase()}
+                </span>
+                <div>
+                  <div className="font-medium text-slate-900">{u.name}</div>
+                  <div className="text-xs text-slate-500">
+                    {u.lists} list{u.lists === 1 ? "" : "s"} ·{" "}
+                    <span className={u.dueCount > 0 ? "text-rose-600" : ""}>{u.dueCount} due</span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
     </div>
   );
 }

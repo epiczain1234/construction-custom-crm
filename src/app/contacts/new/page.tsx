@@ -15,7 +15,7 @@ export default async function NewContactPage({
   const { segmentId } = await searchParams;
   const segments = await prisma.segment.findMany({
     orderBy: { name: "asc" },
-    select: { id: true, name: true, visibility: true },
+    select: { id: true, name: true },
   });
 
   return (
