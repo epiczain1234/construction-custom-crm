@@ -1,0 +1,124 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+import { prisma } from "@/lib/prisma";
+import { requireUser } from "@/lib/session";
+import { computeNextFollowUp } from "@/lib/scheduling";
+import {
+  ActivityType,
+  CallOutcome,
+  ReminderStatus,
+  TranscriptProvider,
+} from "@/generated/prisma/enums";
+
+export interface LogCallInput {
+  contactId: string;
+  outcome: CallOutcome;
+  note?: string;
+  /** ISO date string — required (UI-enforced) for CALLBACK_REQUESTED */
+  callbackDate?: string | null;
+  transcript?: {
+    text: string;
+    segments?: unknown;
+    durationMs?: number;
+    provider?: TranscriptProvider;
+  };
+}
+
+/**
+ * Log a call outcome. Atomically:
+ *  - creates a CALL Activity (with optional transcript),
+ *  - updates the contact's status / lastContactedAt / nextFollowUpAt,
+ *  - completes any open reminder and schedules the next one.
+ */
+export async function logCall(input: LogCallInput) {
+  const user = await requireUser();
+
+  const contact = await prisma.contact.findUnique({
+    where: { id: input.contactId },
+    select: { id: true, status: true, cadenceDays: true, ownerId: true, doNotCall: true },
+  });
+  if (!contact) throw new Error("Contact not found");
+
+  const now = new Date();
+  const explicitDate = input.callbackDate ? new Date(input.callbackDate) : null;
+  const schedule = computeNextFollowUp(input.outcome, contact.cadenceDays, now, explicitDate);
+
+  const reminderUserId = contact.ownerId ?? user.id;
+  const hasTranscript = !!input.transcript && input.transcript.text.trim().length > 0;
+
+  await prisma.$transaction(async (tx) => {
+    const activity = await tx.activity.create({
+      data: {
+        type: ActivityType.CALL,
+        outcome: input.outcome,
+        note: input.note?.trim() || null,
+        prevStatus: contact.status,
+        newStatus: schedule.status,
+        contactId: contact.id,
+        userId: user.id,
+        transcript: hasTranscript
+          ? {
+              create: {
+                text: input.transcript!.text.trim(),
+                segments: (input.transcript!.segments as object) ?? undefined,
+                durationMs: input.transcript!.durationMs ?? null,
+                provider: input.transcript!.provider ?? TranscriptProvider.WEB_SPEECH,
+              },
+            }
+          : undefined,
+      },
+    });
+
+    await tx.contact.update({
+      where: { id: contact.id },
+      data: {
+        status: schedule.status,
+        lastContactedAt: now,
+        nextFollowUpAt: schedule.nextFollowUpAt,
+        doNotCall: schedule.doNotCall || contact.doNotCall,
+      },
+    });
+
+    // Close out any open reminders for this contact…
+    await tx.reminder.updateMany({
+      where: { contactId: contact.id, status: ReminderStatus.PENDING },
+      data: { status: ReminderStatus.COMPLETED },
+    });
+
+    // …and schedule the next one if there's a follow-up date.
+    if (schedule.nextFollowUpAt) {
+      await tx.reminder.create({
+        data: {
+          contactId: contact.id,
+          userId: reminderUserId,
+          dueAt: schedule.nextFollowUpAt,
+          status: ReminderStatus.PENDING,
+        },
+      });
+    }
+
+    return activity;
+  });
+
+  revalidatePath(`/contacts/${contact.id}`);
+  revalidatePath("/dashboard");
+  revalidatePath("/contacts");
+}
+
+/** Add a freeform note (not a call) to a contact's timeline. */
+export async function addNote(contactId: string, note: string) {
+  const user = await requireUser();
+  const trimmed = note.trim();
+  if (!trimmed) return;
+
+  await prisma.activity.create({
+    data: {
+      type: ActivityType.NOTE,
+      note: trimmed,
+      contactId,
+      userId: user.id,
+    },
+  });
+  revalidatePath(`/contacts/${contactId}`);
+}

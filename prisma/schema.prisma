@@ -1,0 +1,194 @@
+// Construction CRM — Prisma schema
+// Docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------- Enums ----------
+
+enum ContactType {
+  CLIENT
+  GENERAL_CONTRACTOR
+  SUBCONTRACTOR
+  SUPPLIER
+  ARCHITECT
+  OTHER
+}
+
+enum ContactStatus {
+  NEW
+  ATTEMPTING // tried, no connection yet (no answer / vm)
+  IN_CONVERSATION // reached, talking
+  INTERESTED
+  NOT_INTERESTED
+  CALLBACK
+  WON
+  DEAD // wrong number / do-not-call / lost
+}
+
+enum CallOutcome {
+  NO_ANSWER
+  LEFT_VOICEMAIL
+  INTERESTED
+  NOT_INTERESTED
+  CALLBACK_REQUESTED
+  WRONG_NUMBER
+  CLOSED_WON
+}
+
+enum ActivityType {
+  CALL
+  NOTE
+  STATUS_CHANGE
+}
+
+enum SegmentVisibility {
+  PRIVATE // owner only
+  SHARED // both users
+}
+
+enum ReminderStatus {
+  PENDING
+  DISMISSED
+  COMPLETED
+}
+
+enum TranscriptProvider {
+  WEB_SPEECH
+  DEEPGRAM
+  OPENAI
+}
+
+// ---------- Models ----------
+
+model User {
+  id        String   @id @default(cuid())
+  name      String // "Zain", "Alejandro"
+  email     String   @unique // for the future email digest
+  createdAt DateTime @default(now())
+
+  ownedSegments    Segment[]  @relation("SegmentOwner")
+  activities       Activity[]
+  reminders        Reminder[]
+  assignedContacts Contact[]  @relation("ContactOwner")
+}
+
+model Contact {
+  id        String        @id @default(cuid())
+  firstName String
+  lastName  String?
+  company   String?
+  title     String?
+  phone     String?
+  email     String?
+  notes     String? // freeform running notes
+  type      ContactType   @default(OTHER)
+  status    ContactStatus @default(NEW)
+
+  // --- Follow-up scheduling ---
+  cadenceDays     Int? // default cadence in days; null = no auto-cadence
+  nextFollowUpAt  DateTime? // source of truth for "is this contact due?"
+  lastContactedAt DateTime? // stamped whenever a CALL activity is logged
+  doNotCall       Boolean   @default(false)
+
+  // optional ownership for "my contacts" views (segments are the primary grouping)
+  owner   User?   @relation("ContactOwner", fields: [ownerId], references: [id])
+  ownerId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  segments   ContactSegment[]
+  activities Activity[]
+  reminders  Reminder[]
+
+  @@index([nextFollowUpAt])
+  @@index([status])
+  @@index([ownerId])
+}
+
+model Segment {
+  id          String            @id @default(cuid())
+  name        String
+  description String?
+  visibility  SegmentVisibility @default(SHARED)
+
+  owner   User   @relation("SegmentOwner", fields: [ownerId], references: [id])
+  ownerId String
+
+  createdAt DateTime @default(now())
+
+  contacts ContactSegment[]
+
+  @@index([ownerId])
+}
+
+model ContactSegment {
+  contact   Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  contactId String
+  segment   Segment  @relation(fields: [segmentId], references: [id], onDelete: Cascade)
+  segmentId String
+  addedAt   DateTime @default(now())
+
+  @@id([contactId, segmentId])
+  @@index([segmentId])
+}
+
+model Activity {
+  id      String       @id @default(cuid())
+  type    ActivityType @default(CALL)
+  outcome CallOutcome? // set when type = CALL
+  note    String?
+
+  // audit snapshot of the status change this activity drove
+  prevStatus ContactStatus?
+  newStatus  ContactStatus?
+
+  contact   Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  contactId String
+  user      User    @relation(fields: [userId], references: [id])
+  userId    String
+
+  createdAt DateTime @default(now())
+
+  transcript Transcript?
+
+  @@index([contactId, createdAt])
+  @@index([userId])
+}
+
+model Reminder {
+  id     String         @id @default(cuid())
+  dueAt  DateTime // mirror of contact.nextFollowUpAt at creation
+  status ReminderStatus @default(PENDING)
+
+  contact   Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  contactId String
+  user      User    @relation(fields: [userId], references: [id]) // who should be reminded
+  userId    String
+
+  createdAt DateTime @default(now())
+
+  @@index([userId, status, dueAt])
+}
+
+model Transcript {
+  id           String             @id @default(cuid())
+  text         String // full concatenated transcript
+  segments     Json? // [{ start, end, text, isFinal }] for richer storage
+  provider     TranscriptProvider @default(WEB_SPEECH)
+  language     String?            @default("en-US")
+  durationMs   Int?
+  capturedSide String?            @default("LOCAL_MIC") // documents the Web Speech mic-only limitation
+
+  activity   Activity @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  activityId String   @unique
+
+  createdAt DateTime @default(now())
+}

@@ -1,0 +1,69 @@
+import {
+  CallOutcome,
+  ContactStatus,
+  ContactType,
+  SegmentVisibility,
+} from "@/generated/prisma/enums";
+
+export const CONTACT_TYPE_LABELS: Record<ContactType, string> = {
+  CLIENT: "Client",
+  GENERAL_CONTRACTOR: "General Contractor",
+  SUBCONTRACTOR: "Subcontractor",
+  SUPPLIER: "Supplier",
+  ARCHITECT: "Architect",
+  OTHER: "Other",
+};
+
+export const CONTACT_STATUS_LABELS: Record<ContactStatus, string> = {
+  NEW: "New",
+  ATTEMPTING: "Attempting",
+  IN_CONVERSATION: "In conversation",
+  INTERESTED: "Interested",
+  NOT_INTERESTED: "Not interested",
+  CALLBACK: "Callback",
+  WON: "Won",
+  DEAD: "Dead",
+};
+
+// Tailwind classes for the status badge.
+export const CONTACT_STATUS_STYLES: Record<ContactStatus, string> = {
+  NEW: "bg-slate-100 text-slate-700 ring-slate-200",
+  ATTEMPTING: "bg-amber-100 text-amber-800 ring-amber-200",
+  IN_CONVERSATION: "bg-sky-100 text-sky-800 ring-sky-200",
+  INTERESTED: "bg-emerald-100 text-emerald-800 ring-emerald-200",
+  NOT_INTERESTED: "bg-rose-100 text-rose-700 ring-rose-200",
+  CALLBACK: "bg-violet-100 text-violet-800 ring-violet-200",
+  WON: "bg-green-600 text-white ring-green-700",
+  DEAD: "bg-slate-200 text-slate-500 ring-slate-300",
+};
+
+export const SEGMENT_VISIBILITY_LABELS: Record<SegmentVisibility, string> = {
+  PRIVATE: "Private",
+  SHARED: "Shared",
+};
+
+export interface OutcomeButton {
+  outcome: CallOutcome;
+  label: string;
+  /** keyboard shortcut digit (1-7) */
+  key: string;
+  /** tailwind classes for the button */
+  className: string;
+  /** when true, the UI must collect an explicit callback date first */
+  needsDate?: boolean;
+}
+
+// Ordered for the call screen; index+1 doubles as the keyboard shortcut.
+export const OUTCOME_BUTTONS: OutcomeButton[] = [
+  { outcome: "NO_ANSWER", label: "No Answer", key: "1", className: "bg-amber-500 hover:bg-amber-600" },
+  { outcome: "LEFT_VOICEMAIL", label: "Left Voicemail", key: "2", className: "bg-yellow-500 hover:bg-yellow-600" },
+  { outcome: "INTERESTED", label: "Interested", key: "3", className: "bg-emerald-600 hover:bg-emerald-700" },
+  { outcome: "CALLBACK_REQUESTED", label: "Callback", key: "4", className: "bg-violet-600 hover:bg-violet-700", needsDate: true },
+  { outcome: "NOT_INTERESTED", label: "Not Interested", key: "5", className: "bg-rose-600 hover:bg-rose-700" },
+  { outcome: "WRONG_NUMBER", label: "Wrong Number", key: "6", className: "bg-slate-500 hover:bg-slate-600" },
+  { outcome: "CLOSED_WON", label: "Closed / Won", key: "7", className: "bg-green-700 hover:bg-green-800" },
+];
+
+export const CALL_OUTCOME_LABELS: Record<CallOutcome, string> = Object.fromEntries(
+  OUTCOME_BUTTONS.map((b) => [b.outcome, b.label]),
+) as Record<CallOutcome, string>;
