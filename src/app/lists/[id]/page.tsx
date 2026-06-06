@@ -20,24 +20,27 @@ export default async function ListDetailPage({
   const user = await requireUser();
   const { id } = await params;
 
-  const segment = await prisma.segment.findUnique({
-    where: { id },
-    include: {
-      owner: { select: { id: true, name: true } },
-      contacts: {
-        include: { contact: true },
-        orderBy: { contact: { nextFollowUpAt: { sort: "asc", nulls: "last" } } },
+  // Both queries are independent — run them in one parallel round-trip.
+  const [segment, allContacts] = await Promise.all([
+    prisma.segment.findUnique({
+      where: { id },
+      include: {
+        owner: { select: { id: true, name: true } },
+        contacts: {
+          include: { contact: true },
+          orderBy: { contact: { nextFollowUpAt: { sort: "asc", nulls: "last" } } },
+        },
       },
-    },
-  });
+    }),
+    prisma.contact.findMany({
+      orderBy: { firstName: "asc" },
+      select: { id: true, firstName: true, lastName: true, company: true },
+    }),
+  ]);
   if (!segment) notFound();
 
   // Contacts not yet on this list, for the add picker.
   const memberIds = new Set(segment.contacts.map((cs) => cs.contactId));
-  const allContacts = await prisma.contact.findMany({
-    orderBy: { firstName: "asc" },
-    select: { id: true, firstName: true, lastName: true, company: true },
-  });
   const candidates = allContacts
     .filter((c) => !memberIds.has(c.id))
     .map((c) => ({

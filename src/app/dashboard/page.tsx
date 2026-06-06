@@ -13,22 +13,28 @@ export default async function DashboardPage() {
   // "My" follow-ups: contacts I own (or unassigned), due today or overdue.
   const ownerFilter = { OR: [{ ownerId: user.id }, { ownerId: null }] };
 
-  const due = await prisma.contact.findMany({
-    where: {
-      AND: [ownerFilter, { nextFollowUpAt: { lte: endOfDay(now) } }],
-    },
-    orderBy: { nextFollowUpAt: "asc" },
-    select: {
-      id: true,
-      firstName: true,
-      lastName: true,
-      company: true,
-      phone: true,
-      type: true,
-      status: true,
-      nextFollowUpAt: true,
-    },
-  });
+  // Run both queries in parallel — one round-trip's worth of latency instead of two.
+  const [due, upcomingCount] = await Promise.all([
+    prisma.contact.findMany({
+      where: {
+        AND: [ownerFilter, { nextFollowUpAt: { lte: endOfDay(now) } }],
+      },
+      orderBy: { nextFollowUpAt: "asc" },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        company: true,
+        phone: true,
+        type: true,
+        status: true,
+        nextFollowUpAt: true,
+      },
+    }),
+    prisma.contact.count({
+      where: { AND: [ownerFilter, { nextFollowUpAt: { gt: endOfDay(now) } }] },
+    }),
+  ]);
 
   const startToday = startOfDay(now).getTime();
   const contacts: DueContact[] = due.map((c) => ({
@@ -39,10 +45,6 @@ export default async function DashboardPage() {
 
   const overdueCount = contacts.filter((c) => c.overdue).length;
   const todayCount = contacts.length - overdueCount;
-
-  const upcomingCount = await prisma.contact.count({
-    where: { AND: [ownerFilter, { nextFollowUpAt: { gt: endOfDay(now) } }] },
-  });
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-8">
