@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
 import { StatusBadge } from "@/components/contacts/StatusBadge";
 import { ActivityTimeline } from "@/components/contacts/ActivityTimeline";
+import { PreviousNotes } from "@/components/contacts/PreviousNotes";
 import { CallStatusButtons } from "@/components/call/CallStatusButtons";
 import { CONTACT_TYPE_LABELS } from "@/lib/labels";
 import { formatDue, formatDate } from "@/lib/format";
@@ -32,6 +33,18 @@ export default async function ContactDetailPage({
   if (!contact) notFound();
 
   const name = [contact.firstName, contact.lastName].filter(Boolean).join(" ");
+
+  // Notes typed on earlier calls/notes — surfaced above "Log a call" for context.
+  const previousNotes = contact.activities
+    .filter((a) => a.note && a.note.trim())
+    .map((a) => ({
+      id: a.id,
+      note: a.note as string,
+      outcome: a.outcome,
+      type: a.type,
+      at: a.createdAt,
+      by: a.user.name,
+    }));
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-8">
@@ -113,6 +126,8 @@ export default async function ContactDetailPage({
         </aside>
 
         <div className="space-y-6 md:col-span-2">
+          <PreviousNotes notes={previousNotes} />
+
           <section className="rounded-xl border border-slate-200 bg-slate-50 p-4">
             <h2 className="mb-3 text-sm font-semibold text-slate-700">Log a call</h2>
             <CallStatusButtons contactId={contact.id} />

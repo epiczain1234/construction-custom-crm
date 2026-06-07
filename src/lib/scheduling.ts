@@ -55,9 +55,10 @@ export function computeNextFollowUp(
       };
 
     case CallOutcome.INTERESTED:
+      // Caller picks the soonest callback (what the prospect asked for); fall back to +3d.
       return {
         status: ContactStatus.INTERESTED,
-        nextFollowUpAt: addDays(now, cadence ?? 3),
+        nextFollowUpAt: explicitDate ?? addDays(now, cadence ?? 3),
         doNotCall: false,
       };
 

@@ -44,17 +44,20 @@ export interface OutcomeButton {
 }
 
 // Ordered for the call screen; the key doubles as the keyboard shortcut.
+// (No Answer was retired — we always leave a voicemail instead.)
 export const OUTCOME_BUTTONS: OutcomeButton[] = [
-  { outcome: "NO_ANSWER", label: "No Answer", key: "1", className: "bg-amber-500 hover:bg-amber-600" },
-  { outcome: "LEFT_VOICEMAIL", label: "Left Voicemail", key: "2", className: "bg-yellow-500 hover:bg-yellow-600" },
-  { outcome: "INTERESTED", label: "Interested", key: "3", className: "bg-emerald-600 hover:bg-emerald-700" },
-  { outcome: "APPOINTMENT_SET", label: "Appointment Set", key: "4", className: "bg-blue-600 hover:bg-blue-700", needsDate: true },
-  { outcome: "CALLBACK_REQUESTED", label: "Callback", key: "5", className: "bg-violet-600 hover:bg-violet-700", needsDate: true },
-  { outcome: "NOT_INTERESTED", label: "Not Interested", key: "6", className: "bg-rose-600 hover:bg-rose-700" },
-  { outcome: "WRONG_NUMBER", label: "Wrong Number", key: "7", className: "bg-slate-500 hover:bg-slate-600" },
-  { outcome: "CLOSED_WON", label: "Closed / Won", key: "8", className: "bg-green-700 hover:bg-green-800" },
+  { outcome: "LEFT_VOICEMAIL", label: "Left Voicemail", key: "1", className: "bg-yellow-500 hover:bg-yellow-600" },
+  { outcome: "INTERESTED", label: "Interested", key: "2", className: "bg-emerald-600 hover:bg-emerald-700", needsDate: true },
+  { outcome: "APPOINTMENT_SET", label: "Appointment Set", key: "3", className: "bg-blue-600 hover:bg-blue-700", needsDate: true },
+  { outcome: "CALLBACK_REQUESTED", label: "Callback", key: "4", className: "bg-violet-600 hover:bg-violet-700", needsDate: true },
+  { outcome: "NOT_INTERESTED", label: "Not Interested", key: "5", className: "bg-rose-600 hover:bg-rose-700" },
+  { outcome: "WRONG_NUMBER", label: "Wrong Number", key: "6", className: "bg-slate-500 hover:bg-slate-600" },
+  { outcome: "CLOSED_WON", label: "Closed / Won", key: "7", className: "bg-green-700 hover:bg-green-800" },
 ];
 
-export const CALL_OUTCOME_LABELS: Record<CallOutcome, string> = Object.fromEntries(
-  OUTCOME_BUTTONS.map((b) => [b.outcome, b.label]),
-) as Record<CallOutcome, string>;
+// Labels for every outcome, including retired ones (NO_ANSWER) so historical
+// activities still render correctly in timelines and analytics.
+export const CALL_OUTCOME_LABELS: Record<CallOutcome, string> = {
+  NO_ANSWER: "No Answer",
+  ...Object.fromEntries(OUTCOME_BUTTONS.map((b) => [b.outcome, b.label])),
+} as Record<CallOutcome, string>;

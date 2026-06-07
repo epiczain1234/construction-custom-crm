@@ -20,7 +20,26 @@ export default async function CallSegmentPage({
       contacts: {
         // Due first (nulls last), so the call queue prioritizes follow-ups.
         orderBy: { contact: { nextFollowUpAt: { sort: "asc", nulls: "last" } } },
-        include: { contact: true },
+        include: {
+          contact: {
+            include: {
+              // Prior notes (most recent first) to show above the log-outcome panel.
+              activities: {
+                where: { note: { not: null } },
+                orderBy: { createdAt: "desc" },
+                take: 10,
+                select: {
+                  id: true,
+                  note: true,
+                  outcome: true,
+                  type: true,
+                  createdAt: true,
+                  user: { select: { name: true } },
+                },
+              },
+            },
+          },
+        },
       },
     },
   });
@@ -42,6 +61,14 @@ export default async function CallSegmentPage({
       type: c.type,
       status: c.status,
       nextFollowUpAt: c.nextFollowUpAt?.toISOString() ?? null,
+      previousNotes: c.activities.map((a) => ({
+        id: a.id,
+        note: a.note as string,
+        outcome: a.outcome,
+        type: a.type,
+        at: a.createdAt.toISOString(),
+        by: a.user.name,
+      })),
     }));
 
   if (contacts.length === 0) {

@@ -6,6 +6,7 @@ import { ContactStatus, ContactType } from "@/generated/prisma/enums";
 import { StatusBadge } from "@/components/contacts/StatusBadge";
 import { CallStatusButtons, type TranscriptPayload } from "@/components/call/CallStatusButtons";
 import { TranscriptPanel } from "@/components/call/TranscriptPanel";
+import { PreviousNotes, type PreviousNote } from "@/components/contacts/PreviousNotes";
 import { useTranscription } from "@/lib/transcription/useTranscription";
 import { CONTACT_TYPE_LABELS } from "@/lib/labels";
 import { formatDue } from "@/lib/format";
@@ -21,6 +22,7 @@ export interface CallContact {
   type: ContactType;
   status: ContactStatus;
   nextFollowUpAt: string | null;
+  previousNotes: PreviousNote[];
 }
 
 export function CallModeClient({
@@ -155,6 +157,8 @@ export function CallModeClient({
               )}
             </div>
           </div>
+
+          <PreviousNotes notes={contact.previousNotes} />
 
           <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
             <div className="mb-2 flex items-center justify-between">

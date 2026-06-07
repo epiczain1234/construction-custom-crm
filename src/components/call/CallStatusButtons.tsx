@@ -97,7 +97,11 @@ export function CallStatusButtons({
       {pendingOutcome ? (
         <div className="rounded-lg border border-violet-200 bg-violet-50 p-3">
           <p className="mb-2 text-sm font-medium text-violet-900">
-            {pendingOutcome === "APPOINTMENT_SET" ? "When's the appointment?" : "When should we call back?"}
+            {pendingOutcome === "APPOINTMENT_SET"
+              ? "When's the appointment?"
+              : pendingOutcome === "INTERESTED"
+                ? "Soonest to call them back?"
+                : "When should we call back?"}
           </p>
           <div className="flex items-center gap-2">
             <input
