@@ -2,6 +2,7 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
 import { endOfDay } from "@/lib/scheduling";
+import { ActivityType } from "@/generated/prisma/enums";
 
 export const dynamic = "force-dynamic";
 
@@ -33,6 +34,22 @@ export default async function CallPickerPage() {
   const segments = [...allSegments].sort((a, b) => rank(a.assigneeId) - rank(b.assigneeId));
 
   const dueBySegment = new Map(dueGroups.map((g) => [g.segmentId, g._count.contactId]));
+
+  // "Already called" review: per visible person, how many leads they've logged a call on.
+  // Admins see everyone; reps see only themselves.
+  const visibleUsers = await prisma.user.findMany({
+    where: user.isAdmin ? undefined : { id: user.id },
+    orderBy: { name: "asc" },
+    select: { id: true, name: true },
+  });
+  const calledCounts = await Promise.all(
+    visibleUsers.map((u) =>
+      prisma.contact.count({
+        where: { activities: { some: { type: ActivityType.CALL, userId: u.id } } },
+      }),
+    ),
+  );
+  const called = visibleUsers.map((u, i) => ({ ...u, count: calledCounts[i] }));
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-8">
@@ -85,6 +102,30 @@ export default async function CallPickerPage() {
           })}
         </div>
       )}
+
+      {/* Already-called review, per person */}
+      <section className="mt-8">
+        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-400">
+          Already called
+        </h2>
+        <div className="space-y-3">
+          {called.map((p) => (
+            <Link
+              key={p.id}
+              href={`/call/called/${p.id}`}
+              className="flex items-center justify-between rounded-xl border border-slate-200 bg-white p-4 transition-colors hover:border-emerald-600"
+            >
+              <div>
+                <h3 className="font-medium text-slate-900">
+                  {p.id === user.id ? "Your called leads" : `${p.name}'s called leads`}
+                </h3>
+                <p className="text-xs text-slate-400">{p.count} called</p>
+              </div>
+              <span className="text-slate-400">→</span>
+            </Link>
+          ))}
+        </div>
+      </section>
     </div>
   );
 }

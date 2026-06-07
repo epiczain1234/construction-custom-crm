@@ -190,7 +190,7 @@ export function CallModeClient({
               <h3 className="text-sm font-semibold text-slate-700">Log outcome</h3>
               <button
                 onClick={advance}
-                className="text-xs text-slate-400 hover:text-slate-700"
+                className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-600 transition-colors hover:border-slate-400 hover:bg-slate-100"
               >
                 Skip →
               </button>
