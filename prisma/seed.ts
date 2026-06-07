@@ -12,8 +12,8 @@ async function main() {
   console.log("Seeding users…");
   const zain = await prisma.user.upsert({
     where: { email: "mukatizain@gmail.com" },
-    update: { name: "Zain" },
-    create: { name: "Zain", email: "mukatizain@gmail.com" },
+    update: { name: "Zain", isAdmin: true },
+    create: { name: "Zain", email: "mukatizain@gmail.com", isAdmin: true },
   });
   const alejandro = await prisma.user.upsert({
     where: { email: "alejandro@example.com" },

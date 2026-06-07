@@ -42,7 +42,34 @@ export async function logCall(input: LogCallInput) {
 
   const now = new Date();
   const explicitDate = input.callbackDate ? new Date(input.callbackDate) : null;
-  const schedule = computeNextFollowUp(input.outcome, contact.cadenceDays, now, explicitDate);
+
+  // For no-contact outcomes (No Answer / Left Voicemail), count how many consecutive
+  // no-contact attempts precede this call so the schedule can escalate (1d → 2d → 1wk → 2wk).
+  // The two share one streak; any other outcome (e.g. Interested) resets it.
+  const NO_CONTACT_OUTCOMES: CallOutcome[] = [CallOutcome.NO_ANSWER, CallOutcome.LEFT_VOICEMAIL];
+  let noContactAttempt = 1;
+  if (NO_CONTACT_OUTCOMES.includes(input.outcome)) {
+    const recentCalls = await prisma.activity.findMany({
+      where: { contactId: contact.id, type: ActivityType.CALL },
+      orderBy: { createdAt: "desc" },
+      select: { outcome: true },
+      take: 20,
+    });
+    let priorStreak = 0;
+    for (const a of recentCalls) {
+      if (a.outcome && NO_CONTACT_OUTCOMES.includes(a.outcome)) priorStreak++;
+      else break;
+    }
+    noContactAttempt = priorStreak + 1; // include the call being logged now
+  }
+
+  const schedule = computeNextFollowUp(
+    input.outcome,
+    contact.cadenceDays,
+    now,
+    explicitDate,
+    noContactAttempt,
+  );
 
   const reminderUserId = contact.ownerId ?? user.id;
   const hasTranscript = !!input.transcript && input.transcript.text.trim().length > 0;

@@ -4,7 +4,8 @@ import { requireUser } from "@/lib/session";
 import { endOfDay, startOfDay } from "@/lib/scheduling";
 import { DueList, type DueContact } from "@/components/dashboard/DueList";
 import { WeeklyMetrics } from "@/components/dashboard/WeeklyMetrics";
-import { getWeeklyAnalytics } from "@/lib/analytics";
+import { PersonComparison } from "@/components/dashboard/PersonComparison";
+import { getWeeklyAnalytics, getPerPersonWeekly } from "@/lib/analytics";
 
 export const dynamic = "force-dynamic";
 
@@ -16,7 +17,7 @@ export default async function DashboardPage() {
   // Contacts that are "mine" = those on a list assigned to me.
   const mineFilter = { segments: { some: { segment: { assigneeId: user.id } } } };
 
-  const [myLists, due, dueGroups, otherUsers, analytics] = await Promise.all([
+  const [myLists, due, dueGroups, analytics, perPerson] = await Promise.all([
     // Lists assigned to me, with total contact counts.
     prisma.segment.findMany({
       where: { assigneeId: user.id },
@@ -38,28 +39,13 @@ export default async function DashboardPage() {
       where: { contact: { nextFollowUpAt: { lte: dueBefore } } },
       _count: { contactId: true },
     }),
-    // The rest of the team, for the overview.
-    prisma.user.findMany({ where: { id: { not: user.id } }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
     // Company-wide weekly call/appointment analytics + funnel.
     getWeeklyAnalytics(now),
+    // Per-person head-to-head (calls + appointments this week).
+    getPerPersonWeekly(now),
   ]);
 
   const dueBySegment = new Map(dueGroups.map((g) => [g.segmentId, g._count.contactId]));
-
-  // Team overview: per teammate, how many lists + due calls they have.
-  const team = await Promise.all(
-    otherUsers.map(async (u) => {
-      const [lists, dueCount] = await Promise.all([
-        prisma.segment.count({ where: { assigneeId: u.id } }),
-        prisma.contact.count({
-          where: {
-            AND: [{ segments: { some: { segment: { assigneeId: u.id } } } }, { nextFollowUpAt: { lte: dueBefore } }],
-          },
-        }),
-      ]);
-      return { ...u, lists, dueCount };
-    }),
-  );
 
   const startToday = startOfDay(now).getTime();
   const contacts: DueContact[] = due.map((c) => ({
@@ -109,6 +95,9 @@ export default async function DashboardPage() {
       {/* Company-wide weekly performance + funnel vs benchmark */}
       <WeeklyMetrics data={analytics} />
 
+      {/* Per-person head-to-head: calls + appointments this week */}
+      <PersonComparison people={perPerson} />
+
       {/* My assigned lists */}
       <section className="mb-8">
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-400">
@@ -155,34 +144,6 @@ export default async function DashboardPage() {
         </h2>
         <DueList contacts={contacts} />
       </section>
-
-      {/* Team overview */}
-      {team.length > 0 && (
-        <section>
-          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-400">
-            Team
-          </h2>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            {team.map((u) => (
-              <div
-                key={u.id}
-                className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-4"
-              >
-                <span className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-900 text-sm font-semibold text-white">
-                  {u.name.slice(0, 1).toUpperCase()}
-                </span>
-                <div>
-                  <div className="font-medium text-slate-900">{u.name}</div>
-                  <div className="text-xs text-slate-500">
-                    {u.lists} list{u.lists === 1 ? "" : "s"} ·{" "}
-                    <span className={u.dueCount > 0 ? "text-rose-600" : ""}>{u.dueCount} due</span>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
     </div>
   );
 }

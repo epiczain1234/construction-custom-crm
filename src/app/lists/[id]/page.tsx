@@ -40,6 +40,8 @@ export default async function ListDetailPage({
     prisma.user.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }),
   ]);
   if (!segment) notFound();
+  // Reps can only open lists assigned to them.
+  if (!user.isAdmin && segment.assigneeId !== user.id) notFound();
 
   // Contacts not yet on this list, for the add picker.
   const memberIds = new Set(segment.contacts.map((cs) => cs.contactId));

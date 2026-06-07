@@ -95,3 +95,47 @@ export function weekOverWeek(thisVal: number, lastVal: number): number | null {
   if (lastVal === 0) return null;
   return (thisVal - lastVal) / lastVal;
 }
+
+export interface PersonWeekStats {
+  userId: string;
+  name: string;
+  calls: number;
+  appointments: number;
+}
+
+/**
+ * Per-person head-to-head for this week: calls made and appointments set, one row
+ * per user. Two grouped CALL queries (by userId), joined to the user list so people
+ * with zero activity still show up.
+ */
+export async function getPerPersonWeekly(now: Date = new Date()): Promise<PersonWeekStats[]> {
+  const thisWeekStart = startOfWeek(now);
+
+  const [users, callRows, apptRows] = await Promise.all([
+    prisma.user.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }),
+    prisma.activity.groupBy({
+      by: ["userId"],
+      where: { type: ActivityType.CALL, createdAt: { gte: thisWeekStart } },
+      _count: { _all: true },
+    }),
+    prisma.activity.groupBy({
+      by: ["userId"],
+      where: {
+        type: ActivityType.CALL,
+        outcome: CallOutcome.APPOINTMENT_SET,
+        createdAt: { gte: thisWeekStart },
+      },
+      _count: { _all: true },
+    }),
+  ]);
+
+  const callsBy = new Map(callRows.map((r) => [r.userId, r._count._all]));
+  const apptBy = new Map(apptRows.map((r) => [r.userId, r._count._all]));
+
+  return users.map((u) => ({
+    userId: u.id,
+    name: u.name,
+    calls: callsBy.get(u.id) ?? 0,
+    appointments: apptBy.get(u.id) ?? 0,
+  }));
+}

@@ -8,8 +8,9 @@ export const dynamic = "force-dynamic";
 export default async function ListsPage() {
   const user = await requireUser();
 
-  // Everyone sees all lists; assignment decides whose queue they belong to.
+  // Managers (admins) see every list; reps see only lists assigned to them.
   const segments = await prisma.segment.findMany({
+    where: user.isAdmin ? undefined : { assigneeId: user.id },
     orderBy: { name: "asc" },
     include: {
       assignee: { select: { id: true, name: true } },

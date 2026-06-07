@@ -11,7 +11,7 @@ export default async function CallSegmentPage({
 }: {
   params: Promise<{ segmentId: string }>;
 }) {
-  await requireUser();
+  const user = await requireUser();
   const { segmentId } = await params;
 
   const segment = await prisma.segment.findUnique({
@@ -25,6 +25,8 @@ export default async function CallSegmentPage({
     },
   });
   if (!segment) notFound();
+  // Reps can only open lists assigned to them.
+  if (!user.isAdmin && segment.assigneeId !== user.id) notFound();
 
   const contacts: CallContact[] = segment.contacts
     .map((cs) => cs.contact)

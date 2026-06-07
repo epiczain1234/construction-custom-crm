@@ -12,6 +12,8 @@ export default async function CallPickerPage() {
   // grouped query (one round-trip) instead of one count per list (N+1).
   const [allSegments, dueGroups] = await Promise.all([
     prisma.segment.findMany({
+      // Managers see all lists; reps see only lists assigned to them.
+      where: user.isAdmin ? undefined : { assigneeId: user.id },
       orderBy: { name: "asc" },
       include: {
         assignee: { select: { id: true, name: true } },

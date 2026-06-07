@@ -67,6 +67,7 @@ model User {
   id        String   @id @default(cuid())
   name      String // "Zain", "Alejandro"
   email     String   @unique // for the future email digest
+  isAdmin   Boolean  @default(false) // managers see all lists; reps see only their assigned ones
   createdAt DateTime @default(now())
 
   ownedSegments    Segment[]  @relation("SegmentOwner")

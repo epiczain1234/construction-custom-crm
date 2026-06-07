@@ -71,66 +71,56 @@ export function WeeklyMetrics({ data }: { data: WeeklyAnalytics }) {
         </div>
       </div>
 
-      {/* Funnel: Alexander & Associates vs benchmark, every stage */}
+      {/* Funnel: Alexander & Associates vs benchmark, every stage (numbers only) */}
       <div className="rounded-xl border border-slate-200 bg-white p-4">
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <h3 className="text-sm font-medium text-slate-700">Funnel vs benchmark</h3>
-          <div className="flex items-center gap-3 text-xs text-slate-400">
-            <span className="flex items-center gap-1">
-              <span className="h-2 w-3 rounded-sm bg-slate-500" /> {COMPANY_NAME}
-            </span>
-            <span className="flex items-center gap-1">
-              <span className="h-3 w-0 border-l-2 border-dashed border-slate-700" /> benchmark
-            </span>
-          </div>
-        </div>
+        <h3 className="mb-3 text-sm font-medium text-slate-700">Funnel vs benchmark</h3>
 
         {calls === 0 ? (
           <p className="py-4 text-center text-sm text-slate-400">No calls logged yet this week.</p>
         ) : (
-          <div className="space-y-3">
-            {stages.map((s) => {
-              const benchCount = Math.round(calls * s.rate);
-              const actualPct = s.actual / calls;
-              const hit = s.baseline || s.actual >= benchCount;
-              const fillColor = s.baseline
-                ? "bg-slate-400"
-                : hit
-                  ? "bg-emerald-500"
-                  : "bg-rose-500";
-              return (
-                <div key={s.label}>
-                  <div className="mb-0.5 flex items-center justify-between text-xs">
-                    <span className="font-medium text-slate-600">{s.label}</span>
-                    <span className="text-slate-400">
-                      <span className="font-medium text-slate-600">{s.actual}</span> ({pct(actualPct)})
-                      {!s.baseline && (
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-400">
+                <th className="py-2 pr-4 font-medium">Stage</th>
+                <th className="px-2 py-2 text-right font-medium">{COMPANY_NAME}</th>
+                <th className="px-2 py-2 text-right font-medium">Benchmark</th>
+                <th className="py-2 pl-2 text-right font-medium">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {stages.map((s) => {
+                const benchCount = Math.round(calls * s.rate);
+                const actualPct = s.actual / calls;
+                const hit = s.baseline || s.actual >= benchCount;
+                return (
+                  <tr key={s.label} className="border-b border-slate-100 last:border-0">
+                    <td className="py-2 pr-4 font-medium text-slate-600">{s.label}</td>
+                    <td className="px-2 py-2 text-right tabular-nums text-slate-700">
+                      {s.actual} <span className="text-slate-400">({pct(actualPct)})</span>
+                    </td>
+                    <td className="px-2 py-2 text-right tabular-nums text-slate-500">
+                      {s.baseline ? (
+                        "—"
+                      ) : (
                         <>
-                          {" "}vs <span className="font-medium">{benchCount}</span> ({pct(s.rate)})
-                          <span className={hit ? "text-emerald-600" : "text-rose-600"}>
-                            {" "}{hit ? "▲" : "▼"}
-                          </span>
+                          {benchCount} <span className="text-slate-400">({pct(s.rate)})</span>
                         </>
                       )}
-                    </span>
-                  </div>
-                  <div className="relative h-6 overflow-hidden rounded-md bg-slate-100">
-                    <div
-                      className={`h-full ${fillColor} transition-all`}
-                      style={{ width: `${Math.max(actualPct * 100, s.actual > 0 ? 2 : 0)}%` }}
-                    />
-                    {!s.baseline && (
-                      <div
-                        className="absolute top-0 h-full border-l-2 border-dashed border-slate-700"
-                        style={{ left: `${s.rate * 100}%` }}
-                        title={`Benchmark: ${benchCount} (${pct(s.rate)})`}
-                      />
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+                    </td>
+                    <td className="py-2 pl-2 text-right">
+                      {s.baseline ? (
+                        <span className="text-slate-300">—</span>
+                      ) : (
+                        <span className={`font-medium ${hit ? "text-emerald-600" : "text-rose-600"}`}>
+                          {hit ? "▲ above" : "▼ below"}
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         )}
       </div>
     </section>

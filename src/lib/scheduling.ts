@@ -6,6 +6,17 @@ export function addDays(from: Date, days: number): Date {
   return new Date(from.getTime() + days * DAY_MS);
 }
 
+// Escalating retry ladder for consecutive no-contact attempts (in days). A "no-contact"
+// attempt is a No Answer or a Left Voicemail — both share this back-off, so leaving a
+// voicemail doesn't restart the clock. Caps at the last value.
+//   attempt 1 → +1 day, 2 → +2 days, 3 → +1 week, 4+ → +2 weeks
+const NO_CONTACT_LADDER_DAYS = [1, 2, 7, 14];
+
+function noContactDelayDays(attempt: number): number {
+  const idx = Math.min(Math.max(attempt, 1), NO_CONTACT_LADDER_DAYS.length) - 1;
+  return NO_CONTACT_LADDER_DAYS[idx];
+}
+
 export interface ScheduleResult {
   status: ContactStatus;
   nextFollowUpAt: Date | null;
@@ -21,21 +32,27 @@ export interface ScheduleResult {
  * @param cadenceDays  the contact's configured cadence (days), if any
  * @param now          reference "now" (injectable for testing/server time)
  * @param explicitDate required for CALLBACK_REQUESTED — the date the contact asked for
+ * @param noContactAttempt how many consecutive no-contact attempts this is (No Answer or
+ *                         Left Voicemail), 1-based incl. this call; drives the retry ladder
  */
 export function computeNextFollowUp(
   outcome: CallOutcome,
   cadenceDays: number | null | undefined,
   now: Date = new Date(),
   explicitDate?: Date | null,
+  noContactAttempt = 1,
 ): ScheduleResult {
   const cadence = cadenceDays && cadenceDays > 0 ? cadenceDays : null;
 
   switch (outcome) {
+    // No Answer and Left Voicemail share one escalating ladder — both are "didn't reach them".
     case CallOutcome.NO_ANSWER:
-      return { status: ContactStatus.ATTEMPTING, nextFollowUpAt: addDays(now, 1), doNotCall: false };
-
     case CallOutcome.LEFT_VOICEMAIL:
-      return { status: ContactStatus.ATTEMPTING, nextFollowUpAt: addDays(now, 2), doNotCall: false };
+      return {
+        status: ContactStatus.ATTEMPTING,
+        nextFollowUpAt: addDays(now, noContactDelayDays(noContactAttempt)),
+        doNotCall: false,
+      };
 
     case CallOutcome.INTERESTED:
       return {
