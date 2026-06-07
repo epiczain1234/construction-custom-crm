@@ -53,6 +53,11 @@ export async function updateContact(contactId: string, formData: FormData) {
   const cadenceRaw = str(formData.get("cadenceDays"));
   const cadenceDays = cadenceRaw ? parseInt(cadenceRaw, 10) : null;
 
+  // Manual overrides so a misclick (e.g. Wrong Number → Do-Not-Call) is recoverable.
+  const doNotCall = formData.get("doNotCall") === "on";
+  const nextRaw = str(formData.get("nextFollowUpAt"));
+  const nextFollowUpAt = nextRaw ? new Date(nextRaw) : null;
+
   await prisma.contact.update({
     where: { id: contactId },
     data: {
@@ -66,6 +71,8 @@ export async function updateContact(contactId: string, formData: FormData) {
       type: (str(formData.get("type")) as ContactType) ?? ContactType.OTHER,
       status: (str(formData.get("status")) as ContactStatus) ?? undefined,
       cadenceDays: cadenceDays && cadenceDays > 0 ? cadenceDays : null,
+      doNotCall,
+      nextFollowUpAt,
     },
   });
 

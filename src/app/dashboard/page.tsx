@@ -2,6 +2,7 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
 import { endOfDay, startOfDay } from "@/lib/scheduling";
+import { ContactStatus } from "@/generated/prisma/enums";
 import { DueList, type DueContact } from "@/components/dashboard/DueList";
 import { WeeklyMetrics } from "@/components/dashboard/WeeklyMetrics";
 import { PersonComparison } from "@/components/dashboard/PersonComparison";
@@ -17,7 +18,7 @@ export default async function DashboardPage() {
   // Contacts that are "mine" = those on a list assigned to me.
   const mineFilter = { segments: { some: { segment: { assigneeId: user.id } } } };
 
-  const [myLists, due, dueGroups, analytics, perPerson] = await Promise.all([
+  const [myLists, due, dueGroups, analytics, perPerson, callableCount] = await Promise.all([
     // Lists assigned to me, with total contact counts.
     prisma.segment.findMany({
       where: { assigneeId: user.id },
@@ -43,6 +44,17 @@ export default async function DashboardPage() {
     getWeeklyAnalytics(now),
     // Per-person head-to-head (calls + appointments this week).
     getPerPersonWeekly(now),
+    // Everything callable right now on my lists (never-called + due), for the CTA.
+    prisma.contact.count({
+      where: {
+        AND: [
+          mineFilter,
+          { doNotCall: false },
+          { status: { notIn: [ContactStatus.WON, ContactStatus.DEAD] } },
+          { OR: [{ nextFollowUpAt: null }, { nextFollowUpAt: { lte: dueBefore } }] },
+        ],
+      },
+    }),
   ]);
 
   const dueBySegment = new Map(dueGroups.map((g) => [g.segmentId, g._count.contactId]));
@@ -71,13 +83,15 @@ export default async function DashboardPage() {
       >
         <div>
           <div className="text-xl font-bold">
-            {contacts.length > 0
-              ? `${contacts.length} call${contacts.length === 1 ? "" : "s"} ready to go`
+            {callableCount > 0
+              ? `${callableCount} call${callableCount === 1 ? "" : "s"} ready to go`
               : "Ready to call"}
           </div>
           <div className="text-sm text-emerald-50">
-            {contacts.length > 0
-              ? "Work through your follow-ups one at a time."
+            {callableCount > 0
+              ? overdueCount > 0
+                ? `${overdueCount} overdue · work your lists one at a time.`
+                : "Work through your list one at a time."
               : "Pick a list and start dialing."}
           </div>
         </div>

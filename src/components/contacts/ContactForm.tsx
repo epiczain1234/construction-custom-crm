@@ -14,6 +14,16 @@ interface ContactFormData {
   type: ContactType;
   status: ContactStatus;
   cadenceDays: number | null;
+  nextFollowUpAt: Date | string | null;
+  doNotCall: boolean;
+}
+
+/** Format a Date for a <input type="datetime-local"> in local time. */
+function toLocalInput(d: Date | string | null | undefined): string {
+  if (!d) return "";
+  const date = typeof d === "string" ? new Date(d) : d;
+  const offset = date.getTimezoneOffset() * 60000;
+  return new Date(date.getTime() - offset).toISOString().slice(0, 16);
 }
 
 export function ContactForm({
@@ -76,7 +86,24 @@ export function ContactForm({
             </select>
           </Field>
         )}
+        {isEdit && (
+          <Field label="Next follow-up">
+            <input
+              name="nextFollowUpAt"
+              type="datetime-local"
+              defaultValue={toLocalInput(contact.nextFollowUpAt)}
+              className={inputCls}
+            />
+          </Field>
+        )}
       </div>
+
+      {isEdit && (
+        <label className="flex items-center gap-2 text-sm text-slate-700">
+          <input type="checkbox" name="doNotCall" defaultChecked={contact.doNotCall} />
+          Do not call <span className="text-xs text-slate-400">(removes them from all call lists)</span>
+        </label>
+      )}
 
       <Field label="Notes">
         <textarea name="notes" rows={3} defaultValue={contact?.notes ?? ""} className={inputCls} />
