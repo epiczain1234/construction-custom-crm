@@ -1,12 +1,13 @@
 /**
- * One-time import: austin-permits `cold_calls_jun7_12` → CRM contacts + two assigned lists.
+ * Import austin-permits `cold_calls_jun7_12` → CRM contacts, split 50/50 into two
+ * permanent lists ("Zain's Leads" / "Alejandro's Leads").
  *
  *   DRY_RUN=1 npx tsx scripts/import-cold-calls.ts   # preview, no writes
  *           npx tsx scripts/import-cold-calls.ts      # live load
  *
- * Reads the DuckDB table via the `duckdb` CLI, transforms each row into a Contact,
- * splits the rows confidence-balanced across Zain + Alejandro, and creates the two
- * weekly call lists. Re-running bails if the lists already exist (no duplicates).
+ * Reads the DuckDB table via the `duckdb` CLI, maps each row → Contact, dedupes by phone
+ * against what's already in the DB (so weekly re-runs only add new leads), then shuffles
+ * (seeded → reproducible) and splits evenly across the two assigned lists.
  */
 import "dotenv/config";
 import { execFileSync } from "node:child_process";
@@ -21,8 +22,12 @@ const DRY_RUN = process.env.DRY_RUN === "1";
 
 const ZAIN_EMAIL = "mukatizain@gmail.com";
 const ALE_EMAIL = "alejandro@example.com";
-const LIST_ZAIN = "Cold Calls — Jun 6–12 (Zain)";
-const LIST_ALE = "Cold Calls — Jun 6–12 (Alejandro)";
+const LIST_ZAIN = "Zain's Leads";
+const LIST_ALE = "Alejandro's Leads";
+const LIST_DESC = "Cold-call leads sourced from Austin building permits.";
+
+// Fixed seed → the same shuffle/split every run (dry-run preview matches the live load).
+const SHUFFLE_SEED = 20260607;
 
 interface Row {
   business: string | null;
@@ -54,7 +59,12 @@ function readRows(): Row[] {
   return JSON.parse(out) as Row[];
 }
 
-/** "5128372917" -> "(512) 837-2917"; pass through anything that isn't 10 digits. */
+/** Digits only — used to dedupe regardless of formatting. */
+function normalizePhone(raw: string | null): string {
+  return (raw ?? "").replace(/\D/g, "");
+}
+
+/** "5128372917" -> "(512) 837-2917"; pass through anything that isn't 10/11 digits. */
 function formatPhone(raw: string | null): string | null {
   if (!raw) return null;
   const d = raw.replace(/\D/g, "");
@@ -104,74 +114,135 @@ function buildNotes(r: Row): string {
     .join("\n\n");
 }
 
-const CONF_RANK: Record<string, number> = { high: 0, medium: 1, low: 2 };
+/** Small seeded PRNG so the shuffle is random-looking but reproducible. */
+function mulberry32(seed: number): () => number {
+  let a = seed >>> 0;
+  return function () {
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function shuffle<T>(arr: T[], rng: () => number): T[] {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+interface Prepared {
+  firstName: string;
+  lastName: string | null;
+  company: string | null;
+  phone: string | null;
+  phoneDigits: string;
+  notes: string;
+  type: ContactType;
+  permits: number;
+  austin: boolean;
+}
+
+const summarize = (arr: Prepared[]) => ({
+  count: arr.length,
+  highValue: arr.filter((c) => c.permits >= 10).length, // 10+ permits
+  austin: arr.filter((c) => c.austin).length,
+});
+
+async function findOrCreateList(
+  prisma: PrismaClient,
+  name: string,
+  ownerId: string,
+  assigneeId: string,
+) {
+  const existing = await prisma.segment.findFirst({ where: { name } });
+  if (existing) return existing;
+  return prisma.segment.create({ data: { name, ownerId, assigneeId, description: LIST_DESC } });
+}
 
 async function main() {
   const rows = readRows();
   console.log(`Read ${rows.length} rows from ${TABLE}.`);
 
-  const contacts = rows.map((r) => {
+  const prepared: Prepared[] = rows.map((r) => {
     const { firstName, lastName } = splitName(r.contact_name);
     return {
       firstName,
       lastName,
       company: r.business?.trim() || null,
       phone: formatPhone(r.best_phone),
+      phoneDigits: normalizePhone(r.best_phone),
       notes: buildNotes(r),
       type: mapType(r.trade),
-      _conf: (r.confidence ?? "medium").toLowerCase(),
+      permits: r.permits ?? 0,
+      austin: /austin/i.test(r.city ?? ""),
     };
   });
 
-  // Confidence-balanced split: order high→med→low, then alternate owners.
-  const ordered = [...contacts].sort(
-    (a, b) => (CONF_RANK[a._conf] ?? 1) - (CONF_RANK[b._conf] ?? 1),
-  );
-  const zainRows = ordered.filter((_, i) => i % 2 === 0);
-  const aleRows = ordered.filter((_, i) => i % 2 === 1);
-
-  const confCount = (arr: typeof contacts) =>
-    arr.reduce<Record<string, number>>((m, c) => ((m[c._conf] = (m[c._conf] ?? 0) + 1), m), {});
-
-  console.log(`\nSplit:`);
-  console.log(`  Zain      → ${zainRows.length}  (${JSON.stringify(confCount(zainRows))})`);
-  console.log(`  Alejandro → ${aleRows.length}  (${JSON.stringify(confCount(aleRows))})`);
-
-  if (DRY_RUN) {
-    console.log(`\n=== SAMPLE transformed contact (Zain #1) ===`);
-    const s = zainRows[0];
-    console.log(`name:    ${s.firstName} ${s.lastName ?? ""}`);
-    console.log(`company: ${s.company}`);
-    console.log(`phone:   ${s.phone}`);
-    console.log(`type:    ${s.type}`);
-    console.log(`notes:\n${s.notes}`);
-    console.log(`\n(DRY_RUN — no database writes. Run without DRY_RUN=1 to load.)`);
-    return;
-  }
-
   const prisma = new PrismaClient({ adapter: new PrismaPg(pgConfig()) });
   try {
+    // Dedupe by phone: skip anyone already in the DB, and any dup within this batch.
+    const existing = await prisma.contact.findMany({ select: { phone: true } });
+    const existingDigits = new Set(
+      existing.map((c) => normalizePhone(c.phone)).filter(Boolean),
+    );
+    const seen = new Set<string>();
+    const toImport: Prepared[] = [];
+    let skipped = 0;
+    for (const c of prepared) {
+      const d = c.phoneDigits;
+      if (d && (existingDigits.has(d) || seen.has(d))) {
+        skipped++;
+        continue;
+      }
+      if (d) seen.add(d);
+      toImport.push(c);
+    }
+
+    // Seeded shuffle, then even 50/50 split (Zain gets the odd one out).
+    const shuffled = shuffle(toImport, mulberry32(SHUFFLE_SEED));
+    const half = Math.ceil(shuffled.length / 2);
+    const zainRows = shuffled.slice(0, half);
+    const aleRows = shuffled.slice(half);
+
+    console.log(`\nAfter dedupe: ${toImport.length} new (skipped ${skipped} already-imported).`);
+    console.log(`Split (count · high-value 10+ · Austin-area):`);
+    console.log(`  Zain      → ${JSON.stringify(summarize(zainRows))}`);
+    console.log(`  Alejandro → ${JSON.stringify(summarize(aleRows))}`);
+
+    if (DRY_RUN) {
+      const s = zainRows[0];
+      if (s) {
+        console.log(`\n=== SAMPLE transformed contact (Zain #1) ===`);
+        console.log(`name:    ${s.firstName} ${s.lastName ?? ""}`);
+        console.log(`company: ${s.company}`);
+        console.log(`phone:   ${s.phone}`);
+        console.log(`type:    ${s.type}`);
+        console.log(`notes:\n${s.notes}`);
+      }
+      console.log(`\n(DRY_RUN — no database writes. Run without DRY_RUN=1 to load.)`);
+      return;
+    }
+
+    if (toImport.length === 0) {
+      console.log(`\nNothing new to import. Done.`);
+      return;
+    }
+
     const zain = await prisma.user.findUniqueOrThrow({ where: { email: ZAIN_EMAIL } });
     const ale = await prisma.user.findUniqueOrThrow({ where: { email: ALE_EMAIL } });
 
-    const existing = await prisma.segment.findFirst({
-      where: { name: { in: [LIST_ZAIN, LIST_ALE] } },
-    });
-    if (existing) {
-      console.error(`\n✗ A list named "${existing.name}" already exists. Aborting to avoid duplicates.`);
-      console.error(`  Delete it first if you want a clean re-import.`);
-      process.exit(1);
-    }
-
-    const segZain = await prisma.segment.create({
-      data: { name: LIST_ZAIN, ownerId: zain.id, assigneeId: zain.id, description: "Austin permit cold calls, week of Jun 6–12." },
-    });
-    const segAle = await prisma.segment.create({
-      data: { name: LIST_ALE, ownerId: zain.id, assigneeId: ale.id, description: "Austin permit cold calls, week of Jun 6–12." },
-    });
+    const segZain = await findOrCreateList(prisma, LIST_ZAIN, zain.id, zain.id);
+    const segAle = await findOrCreateList(prisma, LIST_ALE, zain.id, ale.id);
 
     let n = 0;
-    for (const [segId, list] of [[segZain.id, zainRows], [segAle.id, aleRows]] as const) {
+    for (const [segId, ownerId, list] of [
+      [segZain.id, zain.id, zainRows],
+      [segAle.id, ale.id, aleRows],
+    ] as const) {
       for (const c of list) {
         await prisma.contact.create({
           data: {
@@ -181,14 +252,14 @@ async function main() {
             phone: c.phone,
             notes: c.notes,
             type: c.type,
-            ownerId: segId === segZain.id ? zain.id : ale.id,
+            ownerId,
             segments: { create: { segmentId: segId } },
           },
         });
         n++;
       }
     }
-    console.log(`\n✓ Loaded ${n} contacts into 2 lists.`);
+    console.log(`\n✓ Loaded ${n} contacts (${zainRows.length} → ${LIST_ZAIN}, ${aleRows.length} → ${LIST_ALE}).`);
   } finally {
     await prisma.$disconnect();
   }
