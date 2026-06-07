@@ -29,12 +29,14 @@ export function CallStatusButtons({
   const [pendingOutcome, setPendingOutcome] = useState<CallOutcome | null>(null);
   const [callbackDate, setCallbackDate] = useState("");
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const noteRef = useRef(note);
   noteRef.current = note;
 
   const submit = useCallback(
     async (outcome: CallOutcome, callbackIso?: string | null) => {
       setBusy(true);
+      setError(null);
       try {
         const t = getTranscript?.();
         const input: LogCallInput = {
@@ -45,10 +47,13 @@ export function CallStatusButtons({
           transcript: t && t.text.trim() ? t : undefined,
         };
         await logCall(input);
+        // Only clear + advance on a confirmed save, so nothing is silently lost.
         setNote("");
         setPendingOutcome(null);
         setCallbackDate("");
         onLogged?.(outcome);
+      } catch {
+        setError("Couldn't save that — check your connection and tap the outcome again.");
       } finally {
         setBusy(false);
       }
@@ -86,6 +91,11 @@ export function CallStatusButtons({
 
   return (
     <div className="space-y-3">
+      {error && (
+        <div className="rounded-md border border-rose-300 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700">
+          ⚠️ {error}
+        </div>
+      )}
       <textarea
         value={note}
         onChange={(e) => setNote(e.target.value)}

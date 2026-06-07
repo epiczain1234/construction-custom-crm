@@ -14,10 +14,10 @@ export function TopNav({ userName }: { userName: string }) {
   const pathname = usePathname();
 
   return (
-    <header className="sticky top-0 z-20 border-b border-slate-200 bg-white">
+    <header className="sticky top-0 z-20 border-b border-charcoal-2 bg-charcoal">
       <div className="mx-auto flex h-14 max-w-6xl items-center gap-1 px-4">
-        <Link href="/dashboard" className="mr-4 font-semibold tracking-tight text-slate-900">
-          🏗️ CRM
+        <Link href="/dashboard" className="mr-5 font-serif text-lg font-medium tracking-tight text-ivory">
+          Alexander <span className="text-gold">&amp;</span> Associates
         </Link>
         <nav className="flex items-center gap-1">
           {LINKS.map((link) => {
@@ -29,8 +29,8 @@ export function TopNav({ userName }: { userName: string }) {
                 href={link.href}
                 className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
                   active
-                    ? "bg-slate-900 text-white"
-                    : "text-slate-600 hover:bg-slate-100"
+                    ? "bg-gold text-charcoal"
+                    : "text-ivory-2/80 hover:bg-charcoal-2 hover:text-ivory"
                 }`}
               >
                 {link.label}
@@ -39,13 +39,13 @@ export function TopNav({ userName }: { userName: string }) {
           })}
         </nav>
         <div className="ml-auto flex items-center gap-3 text-sm">
-          <span className="text-slate-500">
-            Signed in as <span className="font-medium text-slate-700">{userName}</span>
+          <span className="text-text-light">
+            Signed in as <span className="font-medium text-ivory-2">{userName}</span>
           </span>
           <form action={logout}>
             <button
               type="submit"
-              className="rounded-md px-2 py-1 text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+              className="rounded-md px-2 py-1 text-text-light hover:bg-charcoal-2 hover:text-ivory"
             >
               Switch
             </button>

@@ -28,9 +28,15 @@ export interface CallContact {
 export function CallModeClient({
   contacts,
   segmentName,
+  waitingCount = 0,
+  soonestWaiting = null,
 }: {
   contacts: CallContact[];
   segmentName: string;
+  /** leads on this list scheduled for a future date (not callable yet) */
+  waitingCount?: number;
+  /** ISO date of the soonest waiting follow-up */
+  soonestWaiting?: string | null;
 }) {
   const [index, setIndex] = useState(0);
   const [called, setCalled] = useState(false);
@@ -64,13 +70,24 @@ export function CallModeClient({
   );
 
   if (done) {
+    const nothingToCall = contacts.length === 0;
     return (
       <div className="mx-auto max-w-md px-4 py-20 text-center">
-        <div className="text-5xl">🎉</div>
-        <h1 className="mt-4 text-2xl font-semibold text-slate-900">List complete</h1>
+        <div className="text-5xl">{nothingToCall ? "✅" : "🎉"}</div>
+        <h1 className="mt-4 text-2xl font-semibold text-slate-900">
+          {nothingToCall ? "Nobody to call right now" : "List complete"}
+        </h1>
         <p className="mt-1 text-sm text-slate-500">
-          You worked through all {contacts.length} contacts in “{segmentName}”.
+          {nothingToCall
+            ? `Everyone on “${segmentName}” is either done or scheduled for later.`
+            : `You worked through all ${contacts.length} callable contacts in “${segmentName}”.`}
         </p>
+        {waitingCount > 0 && (
+          <p className="mt-3 inline-block rounded-full bg-amber-100 px-3 py-1 text-sm font-medium text-amber-800">
+            ⏳ {waitingCount} lead{waitingCount === 1 ? "" : "s"} scheduled for later
+            {soonestWaiting ? ` · next ${formatDue(soonestWaiting)}` : ""}
+          </p>
+        )}
         <div className="mt-6 flex justify-center gap-2">
           <Link href="/dashboard" className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700">
             Back to dashboard
@@ -92,9 +109,17 @@ export function CallModeClient({
           </Link>
           <h1 className="text-lg font-semibold text-slate-900">{segmentName}</h1>
         </div>
-        <span className="text-sm font-medium text-slate-500">
-          {index + 1} / {contacts.length}
-        </span>
+        <div className="text-right">
+          <div className="text-sm font-medium text-slate-500">
+            {index + 1} / {contacts.length} to call
+          </div>
+          {waitingCount > 0 && (
+            <div className="text-xs text-amber-600">
+              ⏳ {waitingCount} scheduled later
+              {soonestWaiting ? ` · next ${formatDue(soonestWaiting)}` : ""}
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">

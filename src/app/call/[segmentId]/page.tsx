@@ -1,10 +1,14 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
+import { endOfDay } from "@/lib/scheduling";
+import { ContactStatus } from "@/generated/prisma/enums";
 import { CallModeClient, type CallContact } from "@/components/call/CallModeClient";
 
 export const dynamic = "force-dynamic";
+
+// Contacts in these states are done — never queue them for calling.
+const TERMINAL_STATUSES: ContactStatus[] = [ContactStatus.WON, ContactStatus.DEAD];
 
 export default async function CallSegmentPage({
   params,
@@ -47,41 +51,51 @@ export default async function CallSegmentPage({
   // Reps can only open lists assigned to them.
   if (!user.isAdmin && segment.assigneeId !== user.id) notFound();
 
-  const contacts: CallContact[] = segment.contacts
+  const now = new Date();
+  const endToday = endOfDay(now);
+
+  // Eligible = on the list, not do-not-call, not already won/dead.
+  const eligible = segment.contacts
     .map((cs) => cs.contact)
-    .filter((c) => !c.doNotCall)
-    .map((c) => ({
-      id: c.id,
-      firstName: c.firstName,
-      lastName: c.lastName,
-      company: c.company,
-      title: c.title,
-      phone: c.phone,
-      notes: c.notes,
-      type: c.type,
-      status: c.status,
-      nextFollowUpAt: c.nextFollowUpAt?.toISOString() ?? null,
-      previousNotes: c.activities.map((a) => ({
-        id: a.id,
-        note: a.note as string,
-        outcome: a.outcome,
-        type: a.type,
-        at: a.createdAt.toISOString(),
-        by: a.user.name,
-      })),
-    }));
+    .filter((c) => !c.doNotCall && !TERMINAL_STATUSES.includes(c.status));
 
-  if (contacts.length === 0) {
-    return (
-      <div className="mx-auto max-w-md px-4 py-20 text-center">
-        <h1 className="text-xl font-semibold text-slate-900">{segment.name}</h1>
-        <p className="mt-2 text-sm text-slate-500">No callable contacts on this list.</p>
-        <Link href={`/lists/${segment.id}`} className="mt-4 inline-block text-sm text-slate-700 underline">
-          Add contacts →
-        </Link>
-      </div>
-    );
-  }
+  const toCallContact = (c: (typeof eligible)[number]): CallContact => ({
+    id: c.id,
+    firstName: c.firstName,
+    lastName: c.lastName,
+    company: c.company,
+    title: c.title,
+    phone: c.phone,
+    notes: c.notes,
+    type: c.type,
+    status: c.status,
+    nextFollowUpAt: c.nextFollowUpAt?.toISOString() ?? null,
+    previousNotes: c.activities.map((a) => ({
+      id: a.id,
+      note: a.note as string,
+      outcome: a.outcome,
+      type: a.type,
+      at: a.createdAt.toISOString(),
+      by: a.user.name,
+    })),
+  });
 
-  return <CallModeClient contacts={contacts} segmentName={segment.name} />;
+  // Callable now = never contacted (no follow-up date) or due today/overdue.
+  const callable = eligible.filter((c) => !c.nextFollowUpAt || c.nextFollowUpAt <= endToday);
+  // Waiting = scheduled for a future date — don't call yet, but show the count.
+  const waiting = eligible.filter((c) => c.nextFollowUpAt && c.nextFollowUpAt > endToday);
+
+  const soonestWaiting = waiting.reduce<Date | null>((min, c) => {
+    const d = c.nextFollowUpAt!;
+    return !min || d < min ? d : min;
+  }, null);
+
+  return (
+    <CallModeClient
+      contacts={callable.map(toCallContact)}
+      segmentName={segment.name}
+      waitingCount={waiting.length}
+      soonestWaiting={soonestWaiting?.toISOString() ?? null}
+    />
+  );
 }

@@ -35,5 +35,7 @@ export function pgConfig(): PoolConfig {
     ssl = { rejectUnauthorized: false };
   }
 
-  return { connectionString, ...(ssl ? { ssl } : {}) };
+  // Cap pool size so two app instances (Zain + Alejandro) plus Studio/scripts
+  // can't exhaust DigitalOcean's connection limit (~22 on the basic plan).
+  return { connectionString, max: 5, ...(ssl ? { ssl } : {}) };
 }

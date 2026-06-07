@@ -102,11 +102,11 @@ export function computeNextFollowUp(
       };
 
     case CallOutcome.NOT_INTERESTED:
-      // park it for a year — circle back next year, ignore any short cadence
+      // Respect the "no": mark Dead, no follow-up, and never call again (DNC/compliance).
       return {
-        status: ContactStatus.NOT_INTERESTED,
-        nextFollowUpAt: toWeekday(addDays(now, 365)),
-        doNotCall: false,
+        status: ContactStatus.DEAD,
+        nextFollowUpAt: null,
+        doNotCall: true,
       };
 
     case CallOutcome.WRONG_NUMBER:
