@@ -6,16 +6,31 @@ export function addDays(from: Date, days: number): Date {
   return new Date(from.getTime() + days * DAY_MS);
 }
 
+/** Push a date off the weekend onto the next Monday (Sat → +2, Sun → +1). */
+export function toWeekday(d: Date): Date {
+  const day = d.getDay(); // 0 = Sun … 6 = Sat
+  if (day === 6) return addDays(d, 2);
+  if (day === 0) return addDays(d, 1);
+  return d;
+}
+
 // Escalating retry ladder for consecutive no-contact attempts (in days). A "no-contact"
 // attempt is a No Answer or a Left Voicemail — both share this back-off, so leaving a
-// voicemail doesn't restart the clock. Caps at the last value.
-//   attempt 1 → +1 day, 2 → +2 days, 3 → +1 week, 4+ → +2 weeks
-const NO_CONTACT_LADDER_DAYS = [1, 2, 7, 14];
+// voicemail doesn't restart the clock. Tight early, tapering toward give-up.
+//   #1 +1d, #2 +2d, #3 +3d, #4 +5d, #5 +1wk, #6 +1wk, #7 +2wk  (8th = Dead, below)
+const NO_CONTACT_LADDER_DAYS = [1, 2, 3, 5, 7, 7, 14];
 
 function noContactDelayDays(attempt: number): number {
   const idx = Math.min(Math.max(attempt, 1), NO_CONTACT_LADDER_DAYS.length) - 1;
   return NO_CONTACT_LADDER_DAYS[idx];
 }
+
+// After this many consecutive no-contact attempts, stop the escalating ladder and
+// write the lead off as Dead — then resurface it once after a long cooldown.
+//   8 attempts ≈ industry "give-up" cutoff; 180-day (6mo) cooldown ≈ the long-cold
+//   B2B re-engagement window (and catches a contractor in a new season/project).
+const DEAD_AFTER_NO_CONTACT = 8;
+const DEAD_COOLDOWN_DAYS = 180;
 
 export interface ScheduleResult {
   status: ContactStatus;
@@ -48,9 +63,17 @@ export function computeNextFollowUp(
     // No Answer and Left Voicemail share one escalating ladder — both are "didn't reach them".
     case CallOutcome.NO_ANSWER:
     case CallOutcome.LEFT_VOICEMAIL:
+      // Given up after enough misses: mark Dead, then circle back once in ~6 months.
+      if (noContactAttempt >= DEAD_AFTER_NO_CONTACT) {
+        return {
+          status: ContactStatus.DEAD,
+          nextFollowUpAt: toWeekday(addDays(now, DEAD_COOLDOWN_DAYS)),
+          doNotCall: false,
+        };
+      }
       return {
         status: ContactStatus.ATTEMPTING,
-        nextFollowUpAt: addDays(now, noContactDelayDays(noContactAttempt)),
+        nextFollowUpAt: toWeekday(addDays(now, noContactDelayDays(noContactAttempt))),
         doNotCall: false,
       };
 
@@ -58,7 +81,7 @@ export function computeNextFollowUp(
       // Caller picks the soonest callback (what the prospect asked for); fall back to +3d.
       return {
         status: ContactStatus.INTERESTED,
-        nextFollowUpAt: explicitDate ?? addDays(now, cadence ?? 3),
+        nextFollowUpAt: explicitDate ?? toWeekday(addDays(now, cadence ?? 3)),
         doNotCall: false,
       };
 
@@ -66,7 +89,7 @@ export function computeNextFollowUp(
       // An appointment has a specific time — the UI collects it (explicitDate).
       return {
         status: ContactStatus.INTERESTED,
-        nextFollowUpAt: explicitDate ?? addDays(now, cadence ?? 3),
+        nextFollowUpAt: explicitDate ?? toWeekday(addDays(now, cadence ?? 3)),
         doNotCall: false,
       };
 
@@ -74,7 +97,7 @@ export function computeNextFollowUp(
       return {
         status: ContactStatus.CALLBACK,
         // caller must supply the requested date; fall back to +1 day if missing
-        nextFollowUpAt: explicitDate ?? addDays(now, 1),
+        nextFollowUpAt: explicitDate ?? toWeekday(addDays(now, 1)),
         doNotCall: false,
       };
 
@@ -82,7 +105,7 @@ export function computeNextFollowUp(
       // park it for a year — circle back next year, ignore any short cadence
       return {
         status: ContactStatus.NOT_INTERESTED,
-        nextFollowUpAt: addDays(now, 365),
+        nextFollowUpAt: toWeekday(addDays(now, 365)),
         doNotCall: false,
       };
 
@@ -93,7 +116,7 @@ export function computeNextFollowUp(
       return { status: ContactStatus.WON, nextFollowUpAt: null, doNotCall: false };
 
     default:
-      return { status: ContactStatus.ATTEMPTING, nextFollowUpAt: addDays(now, cadence ?? 7), doNotCall: false };
+      return { status: ContactStatus.ATTEMPTING, nextFollowUpAt: toWeekday(addDays(now, cadence ?? 7)), doNotCall: false };
   }
 }
 
