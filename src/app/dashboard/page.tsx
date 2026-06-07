@@ -3,6 +3,8 @@ import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
 import { endOfDay, startOfDay } from "@/lib/scheduling";
 import { DueList, type DueContact } from "@/components/dashboard/DueList";
+import { WeeklyMetrics } from "@/components/dashboard/WeeklyMetrics";
+import { getWeeklyAnalytics } from "@/lib/analytics";
 
 export const dynamic = "force-dynamic";
 
@@ -14,7 +16,7 @@ export default async function DashboardPage() {
   // Contacts that are "mine" = those on a list assigned to me.
   const mineFilter = { segments: { some: { segment: { assigneeId: user.id } } } };
 
-  const [myLists, due, dueGroups, otherUsers] = await Promise.all([
+  const [myLists, due, dueGroups, otherUsers, analytics] = await Promise.all([
     // Lists assigned to me, with total contact counts.
     prisma.segment.findMany({
       where: { assigneeId: user.id },
@@ -38,6 +40,8 @@ export default async function DashboardPage() {
     }),
     // The rest of the team, for the overview.
     prisma.user.findMany({ where: { id: { not: user.id } }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
+    // Company-wide weekly call/appointment analytics + funnel.
+    getWeeklyAnalytics(now),
   ]);
 
   const dueBySegment = new Map(dueGroups.map((g) => [g.segmentId, g._count.contactId]));
@@ -69,24 +73,41 @@ export default async function DashboardPage() {
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-8">
-      <div className="mb-6 flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold text-slate-900">Hi {user.name} 👋</h1>
-          <p className="text-sm text-slate-500">Here&apos;s your work for today.</p>
-        </div>
-        <Link
-          href="/call"
-          className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
-        >
-          Start calling →
-        </Link>
+      <div className="mb-6">
+        <h1 className="text-2xl font-semibold text-slate-900">Hi {user.name} 👋</h1>
+        <p className="text-sm text-slate-500">Here&apos;s your work for today.</p>
       </div>
+
+      {/* Primary call-to-action — the main thing to do from here. */}
+      <Link
+        href="/call"
+        className="group mb-6 flex items-center justify-between gap-4 rounded-2xl bg-gradient-to-r from-emerald-600 to-emerald-500 p-6 text-white shadow-sm transition-all hover:shadow-md hover:brightness-105"
+      >
+        <div>
+          <div className="text-xl font-bold">
+            {contacts.length > 0
+              ? `${contacts.length} call${contacts.length === 1 ? "" : "s"} ready to go`
+              : "Ready to call"}
+          </div>
+          <div className="text-sm text-emerald-50">
+            {contacts.length > 0
+              ? "Work through your follow-ups one at a time."
+              : "Pick a list and start dialing."}
+          </div>
+        </div>
+        <span className="flex shrink-0 items-center gap-2 rounded-xl bg-white px-6 py-3 text-base font-bold text-emerald-700 shadow-sm transition-transform group-hover:translate-x-0.5">
+          📞 Start calling →
+        </span>
+      </Link>
 
       <div className="mb-6 grid grid-cols-3 gap-3">
         <Stat label="Overdue" value={overdueCount} accent="text-rose-600" />
         <Stat label="Due today" value={todayCount} accent="text-slate-900" />
         <Stat label="My lists" value={myLists.length} accent="text-indigo-600" />
       </div>
+
+      {/* Company-wide weekly performance + funnel vs benchmark */}
+      <WeeklyMetrics data={analytics} />
 
       {/* My assigned lists */}
       <section className="mb-8">

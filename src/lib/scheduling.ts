@@ -44,6 +44,14 @@ export function computeNextFollowUp(
         doNotCall: false,
       };
 
+    case CallOutcome.APPOINTMENT_SET:
+      // An appointment has a specific time — the UI collects it (explicitDate).
+      return {
+        status: ContactStatus.INTERESTED,
+        nextFollowUpAt: explicitDate ?? addDays(now, cadence ?? 3),
+        doNotCall: false,
+      };
+
     case CallOutcome.CALLBACK_REQUESTED:
       return {
         status: ContactStatus.CALLBACK,
@@ -53,10 +61,10 @@ export function computeNextFollowUp(
       };
 
     case CallOutcome.NOT_INTERESTED:
-      // park it: revisit far out only if the contact has an explicit cadence
+      // park it for a year — circle back next year, ignore any short cadence
       return {
         status: ContactStatus.NOT_INTERESTED,
-        nextFollowUpAt: cadence ? addDays(now, 30) : null,
+        nextFollowUpAt: addDays(now, 365),
         doNotCall: false,
       };
 

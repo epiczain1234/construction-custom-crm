@@ -96,7 +96,9 @@ export function CallStatusButtons({
 
       {pendingOutcome ? (
         <div className="rounded-lg border border-violet-200 bg-violet-50 p-3">
-          <p className="mb-2 text-sm font-medium text-violet-900">When should we call back?</p>
+          <p className="mb-2 text-sm font-medium text-violet-900">
+            {pendingOutcome === "APPOINTMENT_SET" ? "When's the appointment?" : "When should we call back?"}
+          </p>
           <div className="flex items-center gap-2">
             <input
               type="datetime-local"
@@ -109,7 +111,7 @@ export function CallStatusButtons({
               onClick={() => submit(pendingOutcome, new Date(callbackDate).toISOString())}
               className="rounded-md bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-50"
             >
-              Save callback
+              {pendingOutcome === "APPOINTMENT_SET" ? "Save appointment" : "Save callback"}
             </button>
             <button
               disabled={busy}
