@@ -1,8 +1,25 @@
 import { prisma } from "@/lib/prisma";
 import { ActivityType, CallOutcome } from "@/generated/prisma/enums";
 
-/** Industry cold-calling benchmark: ~3% of dials become a booked appointment. */
-export const BENCHMARK_CONVERSION = 0.03;
+/** The company name shown against the benchmark on the dashboard. */
+export const COMPANY_NAME = "Alexander & Associates";
+
+/**
+ * Benchmark funnel for B2B (cold-list) tax prospecting, as a fraction of dials.
+ * Sourced from 2025 cold-calling benchmarks:
+ *  - connect rate ~16% (≈166 live answers / 1,000 dials)
+ *  - dial→appointment ~2.5% average (1 meeting per ~40 dials; cold lists 1.5–2%)
+ *  - interested sits between the two
+ * Tweak these to set your own targets.
+ */
+export const BENCHMARK = {
+  connected: 0.16,
+  interested: 0.06,
+  appointment: 0.025,
+};
+
+/** Back-compat: the headline conversion benchmark (appointments ÷ dials). */
+export const BENCHMARK_CONVERSION = BENCHMARK.appointment;
 
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
