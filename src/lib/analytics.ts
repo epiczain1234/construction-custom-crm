@@ -34,24 +34,48 @@ export function startOfWeek(d: Date): Date {
 }
 
 export interface WeekStats {
-  calls: number;
+  calls: number; // distinct contacts called this week (each counted by its latest outcome)
   connected: number; // reached a human
   interested: number; // interested or better
   appointments: number;
   won: number;
 }
 
-type GroupRow = { outcome: CallOutcome | null; _count: { _all: number } };
+/** One contact's most recent CALL in a window: the outcome that "counts" + who logged it. */
+type LatestCall = { contactId: string; outcome: CallOutcome | null; userId: string };
 
-function tally(rows: GroupRow[]): WeekStats {
-  const c = (o: CallOutcome) => rows.find((r) => r.outcome === o)?._count._all ?? 0;
-  const calls = rows.reduce((sum, r) => sum + r._count._all, 0);
+/**
+ * Collapse a window's CALL activities down to the latest one per contact.
+ * Logging an outcome is append-only — the full call history stays on the
+ * contact's timeline — but metrics count each contact once, by their most
+ * recent outcome. So a misclick that's corrected by a later outcome (e.g.
+ * Not Interested → Wrong Number) no longer double-counts the dial or leaves a
+ * stale "connected" on the dashboard.
+ */
+async function latestCallPerContact(gte: Date, lt?: Date): Promise<LatestCall[]> {
+  const activities = await prisma.activity.findMany({
+    where: { type: ActivityType.CALL, createdAt: { gte, ...(lt ? { lt } : {}) } },
+    orderBy: { createdAt: "desc" },
+    select: { contactId: true, outcome: true, userId: true },
+  });
+  const seen = new Set<string>();
+  const latest: LatestCall[] = [];
+  for (const a of activities) {
+    if (seen.has(a.contactId)) continue; // ordered newest-first → first hit is the latest
+    seen.add(a.contactId);
+    latest.push(a);
+  }
+  return latest;
+}
+
+function tally(calls: LatestCall[]): WeekStats {
+  const c = (o: CallOutcome) => calls.filter((x) => x.outcome === o).length;
   const appointments = c(CallOutcome.APPOINTMENT_SET);
   const won = c(CallOutcome.CLOSED_WON);
   const interested = c(CallOutcome.INTERESTED) + appointments + won;
   const connected =
     interested + c(CallOutcome.NOT_INTERESTED) + c(CallOutcome.CALLBACK_REQUESTED);
-  return { calls, connected, interested, appointments, won };
+  return { calls: calls.length, connected, interested, appointments, won };
 }
 
 export interface WeeklyAnalytics {
@@ -70,21 +94,13 @@ export async function getWeeklyAnalytics(now: Date = new Date()): Promise<Weekly
   const thisWeekStart = startOfWeek(now);
   const lastWeekStart = new Date(thisWeekStart.getTime() - WEEK_MS);
 
-  const [thisRows, lastRows] = await Promise.all([
-    prisma.activity.groupBy({
-      by: ["outcome"],
-      where: { type: ActivityType.CALL, createdAt: { gte: thisWeekStart } },
-      _count: { _all: true },
-    }),
-    prisma.activity.groupBy({
-      by: ["outcome"],
-      where: { type: ActivityType.CALL, createdAt: { gte: lastWeekStart, lt: thisWeekStart } },
-      _count: { _all: true },
-    }),
+  const [thisCalls, lastCalls] = await Promise.all([
+    latestCallPerContact(thisWeekStart),
+    latestCallPerContact(lastWeekStart, thisWeekStart),
   ]);
 
-  const thisWeek = tally(thisRows);
-  const lastWeek = tally(lastRows);
+  const thisWeek = tally(thisCalls);
+  const lastWeek = tally(lastCalls);
   const conversion = thisWeek.calls ? thisWeek.appointments / thisWeek.calls : 0;
 
   return { thisWeek, lastWeek, conversion, benchmark: BENCHMARK_CONVERSION };
@@ -111,26 +127,22 @@ export interface PersonWeekStats {
 export async function getPerPersonWeekly(now: Date = new Date()): Promise<PersonWeekStats[]> {
   const thisWeekStart = startOfWeek(now);
 
-  const [users, callRows, apptRows] = await Promise.all([
+  // Same latest-per-contact basis as the funnel, so the leaderboard totals can't
+  // diverge from the headline numbers. A contact is credited to whoever logged
+  // its most recent call this week.
+  const [users, latest] = await Promise.all([
     prisma.user.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }),
-    prisma.activity.groupBy({
-      by: ["userId"],
-      where: { type: ActivityType.CALL, createdAt: { gte: thisWeekStart } },
-      _count: { _all: true },
-    }),
-    prisma.activity.groupBy({
-      by: ["userId"],
-      where: {
-        type: ActivityType.CALL,
-        outcome: CallOutcome.APPOINTMENT_SET,
-        createdAt: { gte: thisWeekStart },
-      },
-      _count: { _all: true },
-    }),
+    latestCallPerContact(thisWeekStart),
   ]);
 
-  const callsBy = new Map(callRows.map((r) => [r.userId, r._count._all]));
-  const apptBy = new Map(apptRows.map((r) => [r.userId, r._count._all]));
+  const callsBy = new Map<string, number>();
+  const apptBy = new Map<string, number>();
+  for (const a of latest) {
+    callsBy.set(a.userId, (callsBy.get(a.userId) ?? 0) + 1);
+    if (a.outcome === CallOutcome.APPOINTMENT_SET) {
+      apptBy.set(a.userId, (apptBy.get(a.userId) ?? 0) + 1);
+    }
+  }
 
   return users.map((u) => ({
     userId: u.id,

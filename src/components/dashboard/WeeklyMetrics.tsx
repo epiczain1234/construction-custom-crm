@@ -23,7 +23,7 @@ export function WeeklyMetrics({ data }: { data: WeeklyAnalytics }) {
 
   // Funnel stages with their benchmark rate (fraction of dials).
   const stages = [
-    { label: "Calls (dials)", actual: thisWeek.calls, rate: 1, baseline: true },
+    { label: "Calls (contacts)", actual: thisWeek.calls, rate: 1, baseline: true },
     { label: "Connected", actual: thisWeek.connected, rate: BENCHMARK.connected, baseline: false },
     { label: "Interested", actual: thisWeek.interested, rate: BENCHMARK.interested, baseline: false },
     { label: "Appointments", actual: thisWeek.appointments, rate: BENCHMARK.appointment, baseline: false },
