@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
 import { endOfDay } from "@/lib/scheduling";
-import { ContactStatus } from "@/generated/prisma/enums";
+import { ContactStatus, ActivityType, CallOutcome } from "@/generated/prisma/enums";
 import { CallModeClient, type CallContact } from "@/components/call/CallModeClient";
 
 export const dynamic = "force-dynamic";
@@ -59,6 +59,19 @@ export default async function CallSegmentPage({
     .map((cs) => cs.contact)
     .filter((c) => !c.doNotCall && !TERMINAL_STATUSES.includes(c.status));
 
+  // How many voicemails we've already left per contact (one grouped query, no N+1).
+  // Drives the "leave a text this time" warning on the 3rd dial.
+  const vmGroups = await prisma.activity.groupBy({
+    by: ["contactId"],
+    where: {
+      type: ActivityType.CALL,
+      outcome: CallOutcome.LEFT_VOICEMAIL,
+      contactId: { in: eligible.map((c) => c.id) },
+    },
+    _count: { _all: true },
+  });
+  const vmByContact = new Map(vmGroups.map((g) => [g.contactId, g._count._all]));
+
   const toCallContact = (c: (typeof eligible)[number]): CallContact => ({
     id: c.id,
     firstName: c.firstName,
@@ -70,6 +83,7 @@ export default async function CallSegmentPage({
     type: c.type,
     status: c.status,
     nextFollowUpAt: c.nextFollowUpAt?.toISOString() ?? null,
+    voicemailCount: vmByContact.get(c.id) ?? 0,
     previousNotes: c.activities.map((a) => ({
       id: a.id,
       note: a.note as string,

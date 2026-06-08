@@ -46,7 +46,7 @@ export interface OutcomeButton {
 // Ordered for the call screen; the key doubles as the keyboard shortcut.
 // (No Answer was retired — we always leave a voicemail instead.)
 export const OUTCOME_BUTTONS: OutcomeButton[] = [
-  { outcome: "LEFT_VOICEMAIL", label: "Left Voicemail", key: "1", className: "bg-yellow-500 hover:bg-yellow-600" },
+  { outcome: "LEFT_VOICEMAIL", label: "Left Voicemail + Text (recommended)", key: "1", className: "bg-yellow-500 hover:bg-yellow-600" },
   { outcome: "INTERESTED", label: "Interested", key: "2", className: "bg-emerald-600 hover:bg-emerald-700", needsDate: true },
   { outcome: "APPOINTMENT_SET", label: "Appointment Set", key: "3", className: "bg-blue-600 hover:bg-blue-700", needsDate: true },
   { outcome: "CALLBACK_REQUESTED", label: "Callback", key: "4", className: "bg-violet-600 hover:bg-violet-700", needsDate: true },
@@ -60,4 +60,6 @@ export const OUTCOME_BUTTONS: OutcomeButton[] = [
 export const CALL_OUTCOME_LABELS: Record<CallOutcome, string> = {
   NO_ANSWER: "No Answer",
   ...Object.fromEntries(OUTCOME_BUTTONS.map((b) => [b.outcome, b.label])),
+  // Cleaner label for history/analytics (the button carries the "(recommended)" nudge).
+  LEFT_VOICEMAIL: "Left Voicemail + Text",
 } as Record<CallOutcome, string>;

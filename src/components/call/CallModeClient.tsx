@@ -22,6 +22,7 @@ export interface CallContact {
   type: ContactType;
   status: ContactStatus;
   nextFollowUpAt: string | null;
+  voicemailCount: number;
   previousNotes: PreviousNote[];
 }
 
@@ -161,6 +162,13 @@ export function CallModeClient({
               <p className="mt-3 whitespace-pre-wrap rounded-md bg-slate-50 p-2 text-sm text-slate-600">
                 {contact.notes}
               </p>
+            )}
+
+            {contact.voicemailCount >= 2 && (
+              <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm font-medium text-amber-900">
+                ⚠️ You&apos;ve already left {contact.voicemailCount} voicemails — don&apos;t leave
+                another. Send a text this time instead.
+              </div>
             )}
 
             <div className="mt-4">
