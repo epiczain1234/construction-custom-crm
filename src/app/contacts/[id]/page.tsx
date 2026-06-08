@@ -7,7 +7,7 @@ import { ActivityTimeline } from "@/components/contacts/ActivityTimeline";
 import { PreviousNotes } from "@/components/contacts/PreviousNotes";
 import { CallStatusButtons } from "@/components/call/CallStatusButtons";
 import { CONTACT_TYPE_LABELS } from "@/lib/labels";
-import { formatDue, formatDate } from "@/lib/format";
+import { formatDue, formatDateTime } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -97,7 +97,7 @@ export default async function ContactDetailPage({
               value={contact.cadenceDays ? `Every ${contact.cadenceDays}d` : "None"}
             />
             <InfoRow label="Next follow-up" value={formatDue(contact.nextFollowUpAt)} />
-            <InfoRow label="Last contacted" value={formatDate(contact.lastContactedAt)} />
+            <InfoRow label="Last contacted" value={formatDateTime(contact.lastContactedAt)} />
           </InfoCard>
 
           <InfoCard title="Lists">
