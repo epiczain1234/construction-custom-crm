@@ -8,6 +8,7 @@ import { CallStatusButtons, type TranscriptPayload } from "@/components/call/Cal
 import { TranscriptPanel } from "@/components/call/TranscriptPanel";
 import { PreviousNotes, type PreviousNote } from "@/components/contacts/PreviousNotes";
 import { useTranscription } from "@/lib/transcription/useTranscription";
+import { saveTranscriptNote } from "@/app/actions/activities";
 import { CONTACT_TYPE_LABELS } from "@/lib/labels";
 import { formatDue } from "@/lib/format";
 
@@ -41,10 +42,22 @@ export function CallModeClient({
 }) {
   const [index, setIndex] = useState(0);
   const [called, setCalled] = useState(false);
+  const [savingTranscript, setSavingTranscript] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const t = useTranscription();
 
-  const contact = contacts[index];
-  const done = index >= contacts.length;
+  // Snapshot the callable queue once on mount and drive navigation purely off
+  // `index`. Logging an outcome triggers a server re-render that drops the
+  // just-logged contact from `contacts` (it's no longer "callable now"). If we
+  // read the live prop, that removal would shift every later contact down one
+  // index — and since advance() also moves index up one, the two stack and skip
+  // a contact on every log. Working from a frozen queue makes advance() the only
+  // thing that moves us forward.
+  const [queue] = useState(() => contacts);
+
+  const contact = queue[index];
+  const done = index >= queue.length;
+  const hasTranscript = !!(t.finalText.trim() || t.interimText.trim());
 
   const getTranscript = useCallback((): TranscriptPayload | undefined => {
     const text = [t.finalText, t.interimText].filter(Boolean).join(" ").trim();
@@ -56,8 +69,28 @@ export function CallModeClient({
     t.stop();
     t.reset();
     setCalled(false);
+    setSaveError(null);
     setIndex((i) => i + 1);
   }, [t]);
+
+  // Save the recording to the timeline as a note without logging an outcome,
+  // then move on. Only advances on a confirmed save so nothing is silently lost.
+  const saveTranscriptOnly = useCallback(async () => {
+    if (!contact || savingTranscript) return;
+    const payload = getTranscript();
+    if (!payload) return;
+    t.stop();
+    setSavingTranscript(true);
+    setSaveError(null);
+    try {
+      await saveTranscriptNote({ contactId: contact.id, transcript: payload });
+      advance();
+    } catch {
+      setSaveError("Couldn't save the transcript — check your connection and try again.");
+    } finally {
+      setSavingTranscript(false);
+    }
+  }, [contact, savingTranscript, getTranscript, t, advance]);
 
   const startCall = useCallback(() => {
     t.reset();
@@ -71,7 +104,7 @@ export function CallModeClient({
   );
 
   if (done) {
-    const nothingToCall = contacts.length === 0;
+    const nothingToCall = queue.length === 0;
     return (
       <div className="mx-auto max-w-md px-4 py-20 text-center">
         <div className="text-5xl">{nothingToCall ? "✅" : "🎉"}</div>
@@ -81,7 +114,7 @@ export function CallModeClient({
         <p className="mt-1 text-sm text-slate-500">
           {nothingToCall
             ? `Everyone on “${segmentName}” is either done or scheduled for later.`
-            : `You worked through all ${contacts.length} callable contacts in “${segmentName}”.`}
+            : `You worked through all ${queue.length} callable contacts in “${segmentName}”.`}
         </p>
         {waitingCount > 0 && (
           <p className="mt-3 inline-block rounded-full bg-amber-100 px-3 py-1 text-sm font-medium text-amber-800">
@@ -112,7 +145,7 @@ export function CallModeClient({
         </div>
         <div className="text-right">
           <div className="text-sm font-medium text-slate-500">
-            {index + 1} / {contacts.length} to call
+            {index + 1} / {queue.length} to call
           </div>
           {waitingCount > 0 && (
             <div className="text-xs text-amber-600">
@@ -196,13 +229,30 @@ export function CallModeClient({
           <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
             <div className="mb-2 flex items-center justify-between">
               <h3 className="text-sm font-semibold text-slate-700">Log outcome</h3>
-              <button
-                onClick={advance}
-                className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-600 transition-colors hover:border-slate-400 hover:bg-slate-100"
-              >
-                Skip →
-              </button>
+              <div className="flex items-center gap-2">
+                {hasTranscript && (
+                  <button
+                    onClick={saveTranscriptOnly}
+                    disabled={savingTranscript}
+                    title="Save the recording to this contact's timeline without logging a call outcome"
+                    className="rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-sm font-semibold text-emerald-700 transition-colors hover:bg-emerald-100 disabled:opacity-50"
+                  >
+                    {savingTranscript ? "Saving…" : "💾 Save transcript"}
+                  </button>
+                )}
+                <button
+                  onClick={advance}
+                  className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-600 transition-colors hover:border-slate-400 hover:bg-slate-100"
+                >
+                  Skip →
+                </button>
+              </div>
             </div>
+            {saveError && (
+              <div className="mb-2 rounded-md border border-rose-300 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700">
+                ⚠️ {saveError}
+              </div>
+            )}
             <CallStatusButtons
               key={contact.id}
               contactId={contact.id}

@@ -35,7 +35,7 @@ export const CONTACT_STATUS_STYLES: Record<ContactStatus, string> = {
 export interface OutcomeButton {
   outcome: CallOutcome;
   label: string;
-  /** keyboard shortcut digit (1-7) */
+  /** keyboard shortcut digit (1-8) */
   key: string;
   /** tailwind classes for the button */
   className: string;
@@ -47,6 +47,7 @@ export interface OutcomeButton {
 // (No Answer was retired — we always leave a voicemail instead.)
 export const OUTCOME_BUTTONS: OutcomeButton[] = [
   { outcome: "LEFT_VOICEMAIL", label: "Left Voicemail + Text (recommended)", key: "1", className: "bg-yellow-500 hover:bg-yellow-600" },
+  { outcome: "VOICEMAIL_BROKEN", label: "Voicemail Broken", key: "8", className: "bg-orange-500 hover:bg-orange-600" },
   { outcome: "INTERESTED", label: "Interested", key: "2", className: "bg-emerald-600 hover:bg-emerald-700", needsDate: true },
   { outcome: "APPOINTMENT_SET", label: "Appointment Set", key: "3", className: "bg-blue-600 hover:bg-blue-700", needsDate: true },
   { outcome: "CALLBACK_REQUESTED", label: "Callback", key: "4", className: "bg-violet-600 hover:bg-violet-700", needsDate: true },

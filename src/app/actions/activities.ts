@@ -46,7 +46,11 @@ export async function logCall(input: LogCallInput) {
   // For no-contact outcomes (No Answer / Left Voicemail), count how many consecutive
   // no-contact attempts precede this call so the schedule can escalate (1d → 2d → 1wk → 2wk).
   // The two share one streak; any other outcome (e.g. Interested) resets it.
-  const NO_CONTACT_OUTCOMES: CallOutcome[] = [CallOutcome.NO_ANSWER, CallOutcome.LEFT_VOICEMAIL];
+  const NO_CONTACT_OUTCOMES: CallOutcome[] = [
+    CallOutcome.NO_ANSWER,
+    CallOutcome.LEFT_VOICEMAIL,
+    CallOutcome.VOICEMAIL_BROKEN,
+  ];
   let noContactAttempt = 1;
   if (NO_CONTACT_OUTCOMES.includes(input.outcome)) {
     const recentCalls = await prisma.activity.findMany({
@@ -130,6 +134,48 @@ export async function logCall(input: LogCallInput) {
 
   revalidatePath(`/contacts/${contact.id}`);
   revalidatePath("/dashboard");
+  revalidatePath("/contacts");
+}
+
+/**
+ * Save a captured recording to the timeline as a NOTE, without logging a call
+ * outcome. Used when the rep records but doesn't mark a status — the transcript
+ * would otherwise be discarded. Deliberately does NOT touch status,
+ * lastContactedAt, follow-up scheduling, or reminders: there's no outcome, so
+ * nothing about where the contact sits in the pipeline should change.
+ */
+export async function saveTranscriptNote(input: {
+  contactId: string;
+  transcript: {
+    text: string;
+    segments?: unknown;
+    durationMs?: number;
+    provider?: TranscriptProvider;
+  };
+  note?: string;
+}) {
+  const user = await requireUser();
+  const text = input.transcript.text.trim();
+  if (!text) return;
+
+  await prisma.activity.create({
+    data: {
+      type: ActivityType.NOTE,
+      note: input.note?.trim() || null,
+      contactId: input.contactId,
+      userId: user.id,
+      transcript: {
+        create: {
+          text,
+          segments: (input.transcript.segments as object) ?? undefined,
+          durationMs: input.transcript.durationMs ?? null,
+          provider: input.transcript.provider ?? TranscriptProvider.WEB_SPEECH,
+        },
+      },
+    },
+  });
+
+  revalidatePath(`/contacts/${input.contactId}`);
   revalidatePath("/contacts");
 }
 

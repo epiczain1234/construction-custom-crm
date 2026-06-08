@@ -60,9 +60,11 @@ export function computeNextFollowUp(
   const cadence = cadenceDays && cadenceDays > 0 ? cadenceDays : null;
 
   switch (outcome) {
-    // No Answer and Left Voicemail share one escalating ladder — both are "didn't reach them".
+    // No Answer, Left Voicemail, and Voicemail Broken share one escalating ladder —
+    // all three are "didn't reach them".
     case CallOutcome.NO_ANSWER:
     case CallOutcome.LEFT_VOICEMAIL:
+    case CallOutcome.VOICEMAIL_BROKEN:
       // Given up after enough misses: mark Dead, then circle back once in ~6 months.
       if (noContactAttempt >= DEAD_AFTER_NO_CONTACT) {
         return {

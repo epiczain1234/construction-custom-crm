@@ -35,6 +35,7 @@ enum ContactStatus {
 enum CallOutcome {
   NO_ANSWER
   LEFT_VOICEMAIL
+  VOICEMAIL_BROKEN // reached voicemail but couldn't leave one (box full/broken); scheduled like LEFT_VOICEMAIL
   INTERESTED
   APPOINTMENT_SET
   CALLBACK_REQUESTED
