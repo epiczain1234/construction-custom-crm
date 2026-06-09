@@ -4,7 +4,9 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
-import { ContactStatus, ContactType } from "@/generated/prisma/enums";
+import { addDays } from "@/lib/scheduling";
+import { followUpForNextTouchpoint } from "@/lib/touchpoints";
+import { ContactStage, ContactStatus, ContactType, ReminderStatus } from "@/generated/prisma/enums";
 
 function str(v: FormDataEntryValue | null): string | null {
   const s = typeof v === "string" ? v.trim() : "";
@@ -21,6 +23,23 @@ export async function createContact(formData: FormData) {
   const cadenceDays = cadenceRaw ? parseInt(cadenceRaw, 10) : null;
   const segmentIds = formData.getAll("segmentIds").filter((v): v is string => typeof v === "string");
 
+  // A client can be added straight into Warm/Active without ever passing through
+  // cold calling. No CALL activity is created here, so the cold funnel is untouched.
+  const stageRaw = str(formData.get("stage"));
+  const stage = (Object.values(ContactStage) as string[]).includes(stageRaw ?? "")
+    ? (stageRaw as ContactStage)
+    : ContactStage.COLD_LEAD;
+
+  // Warm/active contacts start with a scheduled follow-up (touchpoint / +3d) so
+  // they immediately surface on the dashboard; cold leads are queued via lists.
+  const now = new Date();
+  let nextFollowUpAt: Date | null = null;
+  if (stage === ContactStage.WARM_LEAD) {
+    nextFollowUpAt = followUpForNextTouchpoint(now)?.dueAt ?? addDays(now, 90);
+  } else if (stage === ContactStage.ACTIVE_CLIENT) {
+    nextFollowUpAt = addDays(now, 3);
+  }
+
   const contact = await prisma.contact.create({
     data: {
       firstName,
@@ -31,16 +50,23 @@ export async function createContact(formData: FormData) {
       email: str(formData.get("email")),
       notes: str(formData.get("notes")),
       type: (str(formData.get("type")) as ContactType) ?? ContactType.OTHER,
+      stage,
       cadenceDays: cadenceDays && cadenceDays > 0 ? cadenceDays : null,
+      nextFollowUpAt,
       ownerId: user.id,
       segments: {
         create: segmentIds.map((segmentId) => ({ segmentId })),
       },
+      reminders: nextFollowUpAt
+        ? { create: { userId: user.id, dueAt: nextFollowUpAt, status: ReminderStatus.PENDING } }
+        : undefined,
     },
   });
 
   revalidatePath("/contacts");
   revalidatePath("/dashboard");
+  revalidatePath("/active-clients");
+  revalidatePath("/warm-leads");
   redirect(`/contacts/${contact.id}`);
 }
 

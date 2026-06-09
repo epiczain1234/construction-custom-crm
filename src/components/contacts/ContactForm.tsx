@@ -1,6 +1,6 @@
 import Link from "next/link";
-import { ContactStatus, ContactType } from "@/generated/prisma/enums";
-import { CONTACT_STATUS_LABELS, CONTACT_TYPE_LABELS } from "@/lib/labels";
+import { ContactStage, ContactStatus, ContactType } from "@/generated/prisma/enums";
+import { CONTACT_STAGE_LABELS, CONTACT_STATUS_LABELS, CONTACT_TYPE_LABELS } from "@/lib/labels";
 
 interface ContactFormData {
   id: string;
@@ -31,11 +31,14 @@ export function ContactForm({
   segments,
   contact,
   selectedSegmentIds = [],
+  defaultStage = ContactStage.COLD_LEAD,
 }: {
   action: (formData: FormData) => void;
   segments: { id: string; name: string }[];
   contact?: ContactFormData;
   selectedSegmentIds?: string[];
+  /** preselect the lifecycle stage on create (e.g. from /contacts/new?stage=…) */
+  defaultStage?: ContactStage;
 }) {
   const isEdit = !!contact;
 
@@ -67,6 +70,15 @@ export function ContactForm({
             ))}
           </select>
         </Field>
+        {!isEdit && (
+          <Field label="Stage">
+            <select name="stage" defaultValue={defaultStage} className={inputCls}>
+              {Object.entries(CONTACT_STAGE_LABELS).map(([k, v]) => (
+                <option key={k} value={k}>{v}</option>
+              ))}
+            </select>
+          </Field>
+        )}
         <Field label="Follow-up cadence (days)">
           <input
             name="cadenceDays"

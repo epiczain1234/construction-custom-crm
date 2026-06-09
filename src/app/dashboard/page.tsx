@@ -2,7 +2,7 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
 import { endOfDay, startOfDay } from "@/lib/scheduling";
-import { ContactStatus } from "@/generated/prisma/enums";
+import { ContactStage, ContactStatus } from "@/generated/prisma/enums";
 import { DueList, type DueContact } from "@/components/dashboard/DueList";
 import { WeeklyMetrics } from "@/components/dashboard/WeeklyMetrics";
 import { PersonComparison } from "@/components/dashboard/PersonComparison";
@@ -15,56 +15,85 @@ export default async function DashboardPage() {
   const now = new Date();
   const dueBefore = endOfDay(now);
 
-  // Contacts that are "mine" = those on a list assigned to me.
+  // Cold-pipeline contacts that are "mine" = those on a list assigned to me.
   const mineFilter = { segments: { some: { segment: { assigneeId: user.id } } } };
+  // Lifecycle (active/warm) contacts are grouped by ownership, not by calling list.
+  const ownerFilter = { ownerId: user.id };
+  // Shared select shape for the due lists.
+  const dueSelect = {
+    id: true, firstName: true, lastName: true, company: true,
+    phone: true, type: true, status: true, stage: true, nextFollowUpAt: true,
+  } as const;
 
-  const [myLists, due, dueGroups, analytics, perPerson, callableCount] = await Promise.all([
-    // Lists assigned to me, with total contact counts.
-    prisma.segment.findMany({
-      where: { assigneeId: user.id },
-      orderBy: { name: "asc" },
-      include: { _count: { select: { contacts: true } } },
-    }),
-    // My follow-ups due today / overdue.
-    prisma.contact.findMany({
-      where: { AND: [mineFilter, { nextFollowUpAt: { lte: dueBefore } }] },
-      orderBy: { nextFollowUpAt: "asc" },
-      select: {
-        id: true, firstName: true, lastName: true, company: true,
-        phone: true, type: true, status: true, nextFollowUpAt: true,
-      },
-    }),
-    // Due-now counts per list (one grouped query) for the list cards.
-    prisma.contactSegment.groupBy({
-      by: ["segmentId"],
-      where: { contact: { nextFollowUpAt: { lte: dueBefore } } },
-      _count: { contactId: true },
-    }),
-    // Company-wide weekly call/appointment analytics + funnel.
-    getWeeklyAnalytics(now),
-    // Per-person head-to-head (calls + appointments this week).
-    getPerPersonWeekly(now),
-    // Everything callable right now on my lists (never-called + due), for the CTA.
-    prisma.contact.count({
-      where: {
-        AND: [
-          mineFilter,
-          { doNotCall: false },
-          { status: { notIn: [ContactStatus.WON, ContactStatus.DEAD] } },
-          { OR: [{ nextFollowUpAt: null }, { nextFollowUpAt: { lte: dueBefore } }] },
-        ],
-      },
-    }),
-  ]);
+  const [myLists, due, activeDue, warmDue, dueGroups, analytics, perPerson, callableCount] =
+    await Promise.all([
+      // Lists assigned to me, with total contact counts.
+      prisma.segment.findMany({
+        where: { assigneeId: user.id },
+        orderBy: { name: "asc" },
+        include: { _count: { select: { contacts: true } } },
+      }),
+      // My COLD follow-ups due today / overdue.
+      prisma.contact.findMany({
+        where: { AND: [mineFilter, { stage: ContactStage.COLD_LEAD }, { nextFollowUpAt: { lte: dueBefore } }] },
+        orderBy: { nextFollowUpAt: "asc" },
+        select: dueSelect,
+      }),
+      // My active-client follow-ups due (milestones / check-ins).
+      prisma.contact.findMany({
+        where: { AND: [ownerFilter, { stage: ContactStage.ACTIVE_CLIENT }, { nextFollowUpAt: { lte: dueBefore } }] },
+        orderBy: { nextFollowUpAt: "asc" },
+        select: dueSelect,
+      }),
+      // My warm-lead touchpoints due.
+      prisma.contact.findMany({
+        where: { AND: [ownerFilter, { stage: ContactStage.WARM_LEAD }, { nextFollowUpAt: { lte: dueBefore } }] },
+        orderBy: { nextFollowUpAt: "asc" },
+        select: dueSelect,
+      }),
+      // Due-now COLD counts per list (one grouped query) for the list cards.
+      prisma.contactSegment.groupBy({
+        by: ["segmentId"],
+        where: { contact: { stage: ContactStage.COLD_LEAD, nextFollowUpAt: { lte: dueBefore } } },
+        _count: { contactId: true },
+      }),
+      // Company-wide weekly call/appointment analytics + funnel.
+      getWeeklyAnalytics(now),
+      // Per-person head-to-head (calls + appointments this week).
+      getPerPersonWeekly(now),
+      // Everything cold-callable right now on my lists (never-called + due), for the CTA.
+      prisma.contact.count({
+        where: {
+          AND: [
+            mineFilter,
+            { stage: ContactStage.COLD_LEAD },
+            { doNotCall: false },
+            { status: { notIn: [ContactStatus.WON, ContactStatus.DEAD] } },
+            { OR: [{ nextFollowUpAt: null }, { nextFollowUpAt: { lte: dueBefore } }] },
+          ],
+        },
+      }),
+    ]);
 
   const dueBySegment = new Map(dueGroups.map((g) => [g.segmentId, g._count.contactId]));
 
   const startToday = startOfDay(now).getTime();
-  const contacts: DueContact[] = due.map((c) => ({
-    ...c,
+  // Cold rows keep their status badge; active/warm rows show a stage badge.
+  const toDue = (c: (typeof due)[number], withStage: boolean): DueContact => ({
+    id: c.id,
+    firstName: c.firstName,
+    lastName: c.lastName,
+    company: c.company,
+    phone: c.phone,
+    type: c.type,
+    status: c.status,
+    stage: withStage ? c.stage : undefined,
     nextFollowUpAt: c.nextFollowUpAt?.toISOString() ?? null,
     overdue: !!c.nextFollowUpAt && c.nextFollowUpAt.getTime() < startToday,
-  }));
+  });
+  const contacts = due.map((c) => toDue(c, false));
+  const activeContacts = activeDue.map((c) => toDue(c, true));
+  const warmContacts = warmDue.map((c) => toDue(c, true));
 
   const overdueCount = contacts.filter((c) => c.overdue).length;
   const todayCount = contacts.length - overdueCount;
@@ -151,7 +180,26 @@ export default async function DashboardPage() {
         )}
       </section>
 
-      {/* My due follow-ups */}
+      {/* Lifecycle work comes first — clients we're serving / nurturing take priority. */}
+      {activeContacts.length > 0 && (
+        <section className="mb-8">
+          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-blue-500">
+            Active clients due
+          </h2>
+          <DueList contacts={activeContacts} />
+        </section>
+      )}
+
+      {warmContacts.length > 0 && (
+        <section className="mb-8">
+          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-amber-500">
+            Warm leads due
+          </h2>
+          <DueList contacts={warmContacts} />
+        </section>
+      )}
+
+      {/* My due cold follow-ups */}
       <section className="mb-8">
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-400">
           Follow-ups due

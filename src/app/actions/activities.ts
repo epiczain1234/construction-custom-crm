@@ -7,6 +7,7 @@ import { computeNextFollowUp } from "@/lib/scheduling";
 import {
   ActivityType,
   CallOutcome,
+  ContactStage,
   ReminderStatus,
   TranscriptProvider,
 } from "@/generated/prisma/enums";
@@ -101,6 +102,11 @@ export async function logCall(input: LogCallInput) {
       },
     });
 
+    // Winning the job promotes the contact out of the cold pipeline into an
+    // Active Client, and claims ownership (so it surfaces on the closer's
+    // dashboard even if it was an unowned imported lead).
+    const won = input.outcome === CallOutcome.CLOSED_WON;
+
     await tx.contact.update({
       where: { id: contact.id },
       data: {
@@ -108,6 +114,9 @@ export async function logCall(input: LogCallInput) {
         lastContactedAt: now,
         nextFollowUpAt: schedule.nextFollowUpAt,
         doNotCall: schedule.doNotCall || contact.doNotCall,
+        ...(won
+          ? { stage: ContactStage.ACTIVE_CLIENT, ownerId: contact.ownerId ?? user.id }
+          : {}),
       },
     });
 
@@ -135,6 +144,7 @@ export async function logCall(input: LogCallInput) {
   revalidatePath(`/contacts/${contact.id}`);
   revalidatePath("/dashboard");
   revalidatePath("/contacts");
+  revalidatePath("/active-clients"); // a CLOSED_WON lead now appears here
 }
 
 /**

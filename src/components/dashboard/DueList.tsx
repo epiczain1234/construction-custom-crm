@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { useTransition } from "react";
-import { ContactStatus, ContactType } from "@/generated/prisma/enums";
+import { ContactStage, ContactStatus, ContactType } from "@/generated/prisma/enums";
 import { StatusBadge } from "@/components/contacts/StatusBadge";
+import { StageBadge } from "@/components/contacts/StageBadge";
 import { CONTACT_TYPE_LABELS } from "@/lib/labels";
 import { formatDue } from "@/lib/format";
 import { dismissFollowUp, snoozeFollowUp } from "@/app/actions/reminders";
@@ -16,6 +17,8 @@ export interface DueContact {
   phone: string | null;
   type: ContactType;
   status: ContactStatus;
+  /** when set, a stage badge is shown instead of the cold-call status badge */
+  stage?: ContactStage;
   nextFollowUpAt: string | null;
   overdue: boolean;
 }
@@ -49,7 +52,7 @@ function DueRow({ contact: c }: { contact: DueContact }) {
           <Link href={`/contacts/${c.id}`} className="font-medium text-slate-900 hover:underline">
             {name}
           </Link>
-          <StatusBadge status={c.status} />
+          {c.stage ? <StageBadge stage={c.stage} /> : <StatusBadge status={c.status} />}
         </div>
         <div className="truncate text-sm text-slate-500">
           {[c.company, CONTACT_TYPE_LABELS[c.type], c.phone].filter(Boolean).join(" · ")}

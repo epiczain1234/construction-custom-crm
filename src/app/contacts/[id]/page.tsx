@@ -2,7 +2,11 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
+import { ContactStage } from "@/generated/prisma/enums";
 import { StatusBadge } from "@/components/contacts/StatusBadge";
+import { StageBadge } from "@/components/contacts/StageBadge";
+import { MilestoneChecklist } from "@/components/contacts/MilestoneChecklist";
+import { StageSelect } from "@/components/lifecycle/StageSelect";
 import { ActivityTimeline } from "@/components/contacts/ActivityTimeline";
 import { PreviousNotes } from "@/components/contacts/PreviousNotes";
 import { ContactCallPanel } from "@/components/call/ContactCallPanel";
@@ -56,6 +60,7 @@ export default async function ContactDetailPage({
         <div>
           <div className="flex items-center gap-3">
             <h1 className="text-2xl font-semibold text-slate-900">{name}</h1>
+            <StageBadge stage={contact.stage} />
             <StatusBadge status={contact.status} />
             {contact.doNotCall && (
               <span className="rounded-full bg-rose-100 px-2 py-0.5 text-xs font-medium text-rose-700">
@@ -90,6 +95,10 @@ export default async function ContactDetailPage({
       <div className="mt-6 grid grid-cols-1 gap-6 md:grid-cols-3">
         <aside className="space-y-4 md:col-span-1">
           <InfoCard title="Details">
+            <div className="flex items-center justify-between gap-2 py-0.5 text-sm">
+              <span className="text-slate-500">Stage</span>
+              <StageSelect contactId={contact.id} stage={contact.stage} />
+            </div>
             <InfoRow label="Email" value={contact.email} />
             <InfoRow label="Owner" value={contact.owner?.name ?? "Unassigned"} />
             <InfoRow
@@ -99,6 +108,20 @@ export default async function ContactDetailPage({
             <InfoRow label="Next follow-up" value={formatDue(contact.nextFollowUpAt)} />
             <InfoRow label="Last contacted" value={formatDateTime(contact.lastContactedAt)} />
           </InfoCard>
+
+          {contact.stage === ContactStage.ACTIVE_CLIENT && (
+            <InfoCard title="Milestones">
+              <MilestoneChecklist
+                contactId={contact.id}
+                milestones={{
+                  DOCS: contact.milestoneDocsFilledAt?.toISOString() ?? null,
+                  PAYMENT: contact.milestonePaymentCollectedAt?.toISOString() ?? null,
+                  KICKOFF: contact.milestoneKickoffScheduledAt?.toISOString() ?? null,
+                  FINISHED_SERVING: contact.milestoneFinishedServingAt?.toISOString() ?? null,
+                }}
+              />
+            </InfoCard>
+          )}
 
           <InfoCard title="Lists">
             {contact.segments.length === 0 ? (

@@ -2,7 +2,7 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
 import { endOfDay } from "@/lib/scheduling";
-import { ActivityType } from "@/generated/prisma/enums";
+import { ActivityType, ContactStage } from "@/generated/prisma/enums";
 
 export const dynamic = "force-dynamic";
 
@@ -23,7 +23,9 @@ export default async function CallPickerPage() {
     }),
     prisma.contactSegment.groupBy({
       by: ["segmentId"],
-      where: { contact: { nextFollowUpAt: { lte: endOfDay(new Date()) } } },
+      where: {
+        contact: { stage: ContactStage.COLD_LEAD, nextFollowUpAt: { lte: endOfDay(new Date()) } },
+      },
       _count: { contactId: true },
     }),
   ]);

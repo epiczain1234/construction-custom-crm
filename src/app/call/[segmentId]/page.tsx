@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
 import { endOfDay } from "@/lib/scheduling";
-import { ContactStatus, ActivityType, CallOutcome } from "@/generated/prisma/enums";
+import { ContactStatus, ContactStage, ActivityType, CallOutcome } from "@/generated/prisma/enums";
 import { CallModeClient, type CallContact } from "@/components/call/CallModeClient";
 
 export const dynamic = "force-dynamic";
@@ -54,10 +54,16 @@ export default async function CallSegmentPage({
   const now = new Date();
   const endToday = endOfDay(now);
 
-  // Eligible = on the list, not do-not-call, not already won/dead.
+  // Eligible = a cold lead on the list, not do-not-call, not already won/dead.
+  // Active clients / warm leads are worked from their own tabs, never cold-dialed here.
   const eligible = segment.contacts
     .map((cs) => cs.contact)
-    .filter((c) => !c.doNotCall && !TERMINAL_STATUSES.includes(c.status));
+    .filter(
+      (c) =>
+        c.stage === ContactStage.COLD_LEAD &&
+        !c.doNotCall &&
+        !TERMINAL_STATUSES.includes(c.status),
+    );
 
   // How many voicemails we've already left per contact (one grouped query, no N+1).
   // Drives the "leave a text this time" warning on the 3rd dial.

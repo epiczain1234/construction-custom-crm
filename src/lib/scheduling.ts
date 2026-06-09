@@ -32,6 +32,11 @@ function noContactDelayDays(attempt: number): number {
 const DEAD_AFTER_NO_CONTACT = 8;
 const DEAD_COOLDOWN_DAYS = 180;
 
+// On a win we promote the contact to an Active Client (handled in logCall) and
+// schedule a near-term touch to start driving milestones (kickoff/docs) rather
+// than going silent the way a cold-pipeline "Won" used to.
+const ACTIVE_CLIENT_INITIAL_FOLLOWUP_DAYS = 3;
+
 export interface ScheduleResult {
   status: ContactStatus;
   nextFollowUpAt: Date | null;
@@ -115,7 +120,14 @@ export function computeNextFollowUp(
       return { status: ContactStatus.DEAD, nextFollowUpAt: null, doNotCall: true };
 
     case CallOutcome.CLOSED_WON:
-      return { status: ContactStatus.WON, nextFollowUpAt: null, doNotCall: false };
+      // Status stays WON (accurate cold-pipeline disposition); logCall flips the
+      // lifecycle stage to ACTIVE_CLIENT. Schedule a near-term follow-up so the
+      // new client gets worked (milestones) instead of dropping off the radar.
+      return {
+        status: ContactStatus.WON,
+        nextFollowUpAt: toWeekday(addDays(now, ACTIVE_CLIENT_INITIAL_FOLLOWUP_DAYS)),
+        doNotCall: false,
+      };
 
     default:
       return { status: ContactStatus.ATTEMPTING, nextFollowUpAt: toWeekday(addDays(now, cadence ?? 7)), doNotCall: false };

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
+import { ContactStage } from "@/generated/prisma/enums";
 import { ContactForm } from "@/components/contacts/ContactForm";
 import { createContact } from "@/app/actions/contacts";
 
@@ -9,14 +10,18 @@ export const dynamic = "force-dynamic";
 export default async function NewContactPage({
   searchParams,
 }: {
-  searchParams: Promise<{ segmentId?: string }>;
+  searchParams: Promise<{ segmentId?: string; stage?: string }>;
 }) {
   await requireUser();
-  const { segmentId } = await searchParams;
+  const { segmentId, stage } = await searchParams;
   const segments = await prisma.segment.findMany({
     orderBy: { name: "asc" },
     select: { id: true, name: true },
   });
+
+  const defaultStage = (Object.values(ContactStage) as string[]).includes(stage ?? "")
+    ? (stage as ContactStage)
+    : ContactStage.COLD_LEAD;
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-8">
@@ -28,6 +33,7 @@ export default async function NewContactPage({
         action={createContact}
         segments={segments}
         selectedSegmentIds={segmentId ? [segmentId] : []}
+        defaultStage={defaultStage}
       />
     </div>
   );

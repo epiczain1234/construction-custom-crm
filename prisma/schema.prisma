@@ -32,6 +32,16 @@ enum ContactStatus {
   DEAD // wrong number / do-not-call / lost
 }
 
+// Business lifecycle, orthogonal to the cold-call `status` above.
+//   COLD_LEAD     — in the cold-calling pipeline (default)
+//   ACTIVE_CLIENT — won the job, currently serving; track milestones
+//   WARM_LEAD     — job done; year-round touchpoint nurture for referrals/repeat
+enum ContactStage {
+  COLD_LEAD
+  ACTIVE_CLIENT
+  WARM_LEAD
+}
+
 enum CallOutcome {
   NO_ANSWER
   LEFT_VOICEMAIL
@@ -89,6 +99,15 @@ model Contact {
   notes     String? // freeform running notes
   type      ContactType   @default(OTHER)
   status    ContactStatus @default(NEW)
+  stage     ContactStage  @default(COLD_LEAD)
+
+  // --- Active-client milestones (null = not done; set = completed-at timestamp) ---
+  // Fixed set of 4. A separate ClientMilestone model is the future path if these ever
+  // need to be configurable; columns chosen now for simple queryability.
+  milestoneDocsFilledAt       DateTime?
+  milestonePaymentCollectedAt DateTime?
+  milestoneFinishedServingAt  DateTime? // completing this promotes the contact to WARM_LEAD
+  milestoneKickoffScheduledAt DateTime?
 
   // --- Follow-up scheduling ---
   cadenceDays     Int? // default cadence in days; null = no auto-cadence
@@ -110,6 +129,7 @@ model Contact {
   @@index([nextFollowUpAt])
   @@index([status])
   @@index([ownerId])
+  @@index([stage, nextFollowUpAt]) // serves the per-stage list/dashboard "due" views
 }
 
 model Segment {

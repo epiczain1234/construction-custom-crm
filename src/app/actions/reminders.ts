@@ -20,6 +20,8 @@ export async function dismissFollowUp(contactId: string) {
     }),
   ]);
   revalidatePath("/dashboard");
+  revalidatePath("/active-clients");
+  revalidatePath("/warm-leads");
 }
 
 /** Push a contact's follow-up out by N days (default 1). Keeps reminder in sync. */
@@ -47,4 +49,6 @@ export async function snoozeFollowUp(contactId: string, days = 1) {
     });
   });
   revalidatePath("/dashboard");
+  revalidatePath("/active-clients");
+  revalidatePath("/warm-leads");
 }

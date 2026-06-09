@@ -1,4 +1,4 @@
-import { CallOutcome, ContactStatus, ContactType } from "@/generated/prisma/enums";
+import { CallOutcome, ContactStage, ContactStatus, ContactType } from "@/generated/prisma/enums";
 
 export const CONTACT_TYPE_LABELS: Record<ContactType, string> = {
   CLIENT: "Client",
@@ -19,6 +19,29 @@ export const CONTACT_STATUS_LABELS: Record<ContactStatus, string> = {
   WON: "Won",
   DEAD: "Dead",
 };
+
+export const CONTACT_STAGE_LABELS: Record<ContactStage, string> = {
+  COLD_LEAD: "Cold Lead",
+  ACTIVE_CLIENT: "Active Client",
+  WARM_LEAD: "Warm Lead",
+};
+
+// Tailwind classes for the stage badge (mirrors CONTACT_STATUS_STYLES shape).
+export const CONTACT_STAGE_STYLES: Record<ContactStage, string> = {
+  COLD_LEAD: "bg-slate-100 text-slate-700 ring-slate-200",
+  ACTIVE_CLIENT: "bg-blue-100 text-blue-800 ring-blue-200",
+  WARM_LEAD: "bg-amber-100 text-amber-800 ring-amber-200",
+};
+
+// Active-client milestones. Key is the stable action argument; value is the label.
+export const MILESTONE_LABELS = {
+  DOCS: "Docs filled out",
+  PAYMENT: "Payment collected",
+  KICKOFF: "Kickoff scheduled",
+  FINISHED_SERVING: "Finished serving",
+} as const;
+
+export type MilestoneKey = keyof typeof MILESTONE_LABELS;
 
 // Tailwind classes for the status badge.
 export const CONTACT_STATUS_STYLES: Record<ContactStatus, string> = {
