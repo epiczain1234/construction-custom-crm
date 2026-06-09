@@ -4,11 +4,10 @@ import { useCallback, useMemo, useState } from "react";
 import Link from "next/link";
 import { ContactStatus, ContactType } from "@/generated/prisma/enums";
 import { StatusBadge } from "@/components/contacts/StatusBadge";
-import { CallStatusButtons, type TranscriptPayload } from "@/components/call/CallStatusButtons";
+import { CallStatusButtons } from "@/components/call/CallStatusButtons";
 import { TranscriptPanel } from "@/components/call/TranscriptPanel";
 import { PreviousNotes, type PreviousNote } from "@/components/contacts/PreviousNotes";
-import { useTranscription } from "@/lib/transcription/useTranscription";
-import { saveTranscriptNote } from "@/app/actions/activities";
+import { useCallRecorder } from "@/lib/transcription/useCallRecorder";
 import { CONTACT_TYPE_LABELS } from "@/lib/labels";
 import { formatDue } from "@/lib/format";
 
@@ -41,10 +40,6 @@ export function CallModeClient({
   soonestWaiting?: string | null;
 }) {
   const [index, setIndex] = useState(0);
-  const [called, setCalled] = useState(false);
-  const [savingTranscript, setSavingTranscript] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
-  const t = useTranscription();
 
   // Snapshot the callable queue once on mount and drive navigation purely off
   // `index`. Logging an outcome triggers a server re-render that drops the
@@ -57,46 +52,29 @@ export function CallModeClient({
 
   const contact = queue[index];
   const done = index >= queue.length;
-  const hasTranscript = !!(t.finalText.trim() || t.interimText.trim());
 
-  const getTranscript = useCallback((): TranscriptPayload | undefined => {
-    const text = [t.finalText, t.interimText].filter(Boolean).join(" ").trim();
-    if (!text) return undefined;
-    return { text, segments: t.segments, durationMs: Math.round(t.durationMs) };
-  }, [t.finalText, t.interimText, t.segments, t.durationMs]);
+  const {
+    t,
+    called,
+    startCall,
+    reset,
+    getTranscript,
+    hasTranscript,
+    saveTranscriptOnly,
+    savingTranscript,
+    saveError,
+  } = useCallRecorder({ contactId: contact?.id });
 
   const advance = useCallback(() => {
-    t.stop();
-    t.reset();
-    setCalled(false);
-    setSaveError(null);
+    reset();
     setIndex((i) => i + 1);
-  }, [t]);
+  }, [reset]);
 
-  // Save the recording to the timeline as a note without logging an outcome,
-  // then move on. Only advances on a confirmed save so nothing is silently lost.
-  const saveTranscriptOnly = useCallback(async () => {
-    if (!contact || savingTranscript) return;
-    const payload = getTranscript();
-    if (!payload) return;
-    t.stop();
-    setSavingTranscript(true);
-    setSaveError(null);
-    try {
-      await saveTranscriptNote({ contactId: contact.id, transcript: payload });
-      advance();
-    } catch {
-      setSaveError("Couldn't save the transcript — check your connection and try again.");
-    } finally {
-      setSavingTranscript(false);
-    }
-  }, [contact, savingTranscript, getTranscript, t, advance]);
-
-  const startCall = useCallback(() => {
-    t.reset();
-    t.start();
-    setCalled(true);
-  }, [t]);
+  // Save the recording to the timeline (no outcome), then move on — only on a
+  // confirmed save so nothing is silently lost.
+  const saveTranscriptAndAdvance = useCallback(async () => {
+    if (await saveTranscriptOnly()) advance();
+  }, [saveTranscriptOnly, advance]);
 
   const name = useMemo(
     () => (contact ? [contact.firstName, contact.lastName].filter(Boolean).join(" ") : ""),
@@ -232,7 +210,7 @@ export function CallModeClient({
               <div className="flex items-center gap-2">
                 {hasTranscript && (
                   <button
-                    onClick={saveTranscriptOnly}
+                    onClick={saveTranscriptAndAdvance}
                     disabled={savingTranscript}
                     title="Save the recording to this contact's timeline without logging a call outcome"
                     className="rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-sm font-semibold text-emerald-700 transition-colors hover:bg-emerald-100 disabled:opacity-50"

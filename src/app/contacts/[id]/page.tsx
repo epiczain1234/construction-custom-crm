@@ -5,7 +5,7 @@ import { requireUser } from "@/lib/session";
 import { StatusBadge } from "@/components/contacts/StatusBadge";
 import { ActivityTimeline } from "@/components/contacts/ActivityTimeline";
 import { PreviousNotes } from "@/components/contacts/PreviousNotes";
-import { CallStatusButtons } from "@/components/call/CallStatusButtons";
+import { ContactCallPanel } from "@/components/call/ContactCallPanel";
 import { CONTACT_TYPE_LABELS } from "@/lib/labels";
 import { formatDue, formatDateTime } from "@/lib/format";
 
@@ -130,7 +130,7 @@ export default async function ContactDetailPage({
 
           <section className="rounded-xl border border-slate-200 bg-slate-50 p-4">
             <h2 className="mb-3 text-sm font-semibold text-slate-700">Log a call</h2>
-            <CallStatusButtons contactId={contact.id} />
+            <ContactCallPanel contactId={contact.id} />
           </section>
 
           <section>
