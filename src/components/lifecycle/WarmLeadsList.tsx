@@ -7,7 +7,7 @@ import { StatusBadge } from "@/components/contacts/StatusBadge";
 import { StageSelect } from "@/components/lifecycle/StageSelect";
 import { ScheduleControl } from "@/components/lifecycle/ScheduleControl";
 import { formatDue } from "@/lib/format";
-import { logWarmTouch, scheduleNextTouchpoint } from "@/app/actions/lifecycle";
+import { logWarmTouch, scheduleNextTouchpoint, setWarmLeadDead } from "@/app/actions/lifecycle";
 
 export interface WarmLead {
   id: string;
@@ -42,9 +42,10 @@ export function WarmLeadsList({ leads }: { leads: WarmLead[] }) {
 function WarmRow({ lead: c }: { lead: WarmLead }) {
   const [pending, startTransition] = useTransition();
   const name = [c.firstName, c.lastName].filter(Boolean).join(" ");
+  const dead = c.status === "DEAD";
 
   return (
-    <li className={`flex flex-wrap items-center gap-3 px-4 py-3 ${pending ? "opacity-50" : ""}`}>
+    <li className={`flex flex-wrap items-center gap-3 px-4 py-3 ${pending || dead ? "opacity-50" : ""}`}>
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <Link href={`/contacts/${c.id}`} className="font-medium text-slate-900 hover:underline">
@@ -58,35 +59,56 @@ function WarmRow({ lead: c }: { lead: WarmLead }) {
       </div>
 
       <span className="shrink-0 text-sm font-medium text-slate-500">
-        {formatDue(c.nextFollowUpAt)}
+        {dead ? "—" : formatDue(c.nextFollowUpAt)}
       </span>
 
       <div className="flex shrink-0 flex-wrap items-center gap-1">
-        {c.phone && (
-          <a
-            href={`tel:${c.phone}`}
-            className="rounded-md bg-slate-900 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-slate-700"
+        {dead ? (
+          <button
+            onClick={() => startTransition(() => setWarmLeadDead(c.id, false))}
+            disabled={pending}
+            title="Bring this warm lead back onto the touchpoint cadence"
+            className="rounded-md border border-emerald-300 bg-emerald-50 px-2 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-100 disabled:opacity-50"
           >
-            Call
-          </a>
+            Revive
+          </button>
+        ) : (
+          <>
+            {c.phone && (
+              <a
+                href={`tel:${c.phone}`}
+                className="rounded-md bg-slate-900 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-slate-700"
+              >
+                Call
+              </a>
+            )}
+            <button
+              onClick={() => startTransition(() => logWarmTouch(c.id))}
+              disabled={pending}
+              title="Record an outreach and advance to the next touchpoint"
+              className="rounded-md border border-emerald-300 bg-emerald-50 px-2 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-100 disabled:opacity-50"
+            >
+              Log touch
+            </button>
+            <button
+              onClick={() => startTransition(() => scheduleNextTouchpoint(c.id))}
+              disabled={pending}
+              title="Schedule the next holiday / tax-deadline touchpoint"
+              className="rounded-md px-2 py-1.5 text-xs text-slate-500 hover:bg-slate-100 disabled:opacity-50"
+            >
+              Next touchpoint
+            </button>
+            <ScheduleControl contactId={c.id} />
+            <button
+              onClick={() => startTransition(() => setWarmLeadDead(c.id, true))}
+              disabled={pending}
+              title="Mark dead — keeps it here but stops follow-ups"
+              className="rounded-md px-2 py-1.5 text-xs text-rose-500 hover:bg-rose-50 disabled:opacity-50"
+            >
+              Mark dead
+            </button>
+          </>
         )}
-        <button
-          onClick={() => startTransition(() => logWarmTouch(c.id))}
-          disabled={pending}
-          title="Record an outreach and advance to the next touchpoint"
-          className="rounded-md border border-emerald-300 bg-emerald-50 px-2 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-100 disabled:opacity-50"
-        >
-          Log touch
-        </button>
-        <button
-          onClick={() => startTransition(() => scheduleNextTouchpoint(c.id))}
-          disabled={pending}
-          title="Schedule the next holiday / tax-deadline touchpoint"
-          className="rounded-md px-2 py-1.5 text-xs text-slate-500 hover:bg-slate-100 disabled:opacity-50"
-        >
-          Next touchpoint
-        </button>
-        <ScheduleControl contactId={c.id} />
         <StageSelect contactId={c.id} stage={c.stage} />
       </div>
     </li>

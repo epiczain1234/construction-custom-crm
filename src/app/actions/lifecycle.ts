@@ -6,7 +6,7 @@ import { requireUser } from "@/lib/session";
 import { addDays } from "@/lib/scheduling";
 import { followUpForNextTouchpoint } from "@/lib/touchpoints";
 import { CONTACT_STAGE_LABELS, MILESTONE_LABELS, type MilestoneKey } from "@/lib/labels";
-import { ActivityType, ContactStage, ReminderStatus } from "@/generated/prisma/enums";
+import { ActivityType, ContactStage, ContactStatus, ReminderStatus } from "@/generated/prisma/enums";
 import type { Prisma } from "@/generated/prisma/client";
 
 // When the touchpoint calendar is exhausted (past the curated table), fall back
@@ -218,6 +218,56 @@ export async function scheduleFollowUp(contactId: string, dueAtISO: string) {
   await prisma.$transaction(async (tx) => {
     await tx.contact.update({ where: { id: contactId }, data: { nextFollowUpAt: dueAt } });
     await replacePendingReminder(tx, { contactId, userId: ownerId, dueAt });
+  });
+
+  revalidateLifecycle(contactId);
+}
+
+/**
+ * Mark a warm lead dead (or revive it). Dead keeps it in the Warm Leads list
+ * (visible, dimmed) but stops scheduling: status DEAD, doNotCall, no follow-up,
+ * open reminders closed. Reviving re-enables it on the touchpoint cadence.
+ */
+export async function setWarmLeadDead(contactId: string, dead: boolean) {
+  const user = await requireUser();
+  const contact = await prisma.contact.findUnique({
+    where: { id: contactId },
+    select: { ownerId: true },
+  });
+  const ownerId = contact?.ownerId ?? user.id;
+
+  await prisma.$transaction(async (tx) => {
+    if (dead) {
+      await tx.contact.update({
+        where: { id: contactId },
+        data: { status: ContactStatus.DEAD, doNotCall: true, nextFollowUpAt: null },
+      });
+      await replacePendingReminder(tx, { contactId, userId: ownerId, dueAt: null });
+      await tx.activity.create({
+        data: {
+          type: ActivityType.STATUS_CHANGE,
+          note: "Marked dead (warm lead)",
+          newStatus: ContactStatus.DEAD,
+          contactId,
+          userId: user.id,
+        },
+      });
+    } else {
+      const dueAt = nextWarmFollowUp(new Date());
+      await tx.contact.update({
+        where: { id: contactId },
+        data: { status: ContactStatus.NEW, doNotCall: false, nextFollowUpAt: dueAt },
+      });
+      await replacePendingReminder(tx, { contactId, userId: ownerId, dueAt });
+      await tx.activity.create({
+        data: {
+          type: ActivityType.STATUS_CHANGE,
+          note: "Revived (warm lead)",
+          contactId,
+          userId: user.id,
+        },
+      });
+    }
   });
 
   revalidateLifecycle(contactId);
