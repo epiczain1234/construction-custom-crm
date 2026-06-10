@@ -16,20 +16,21 @@ export function toWeekday(d: Date): Date {
 
 // Escalating retry ladder for consecutive no-contact attempts (in days). A "no-contact"
 // attempt is a No Answer or a Left Voicemail — both share this back-off, so leaving a
-// voicemail doesn't restart the clock. Tight early, tapering toward give-up.
-//   #1 +1d, #2 +2d, #3 +3d, #4 +5d, #5 +1wk, #6 +1wk, #7 +2wk  (8th = Dead, below)
-const NO_CONTACT_LADDER_DAYS = [1, 2, 3, 5, 7, 7, 14];
+// voicemail doesn't restart the clock. These are the gaps BETWEEN dials:
+//   call 1 → +2d → call 2 → +4d → call 3 → +7d → call 4 → Dead (see DEAD_AFTER_NO_CONTACT)
+// i.e. 4 dials total (1 initial + 3 follow-ups) before giving up.
+const NO_CONTACT_LADDER_DAYS = [2, 4, 7];
 
 function noContactDelayDays(attempt: number): number {
   const idx = Math.min(Math.max(attempt, 1), NO_CONTACT_LADDER_DAYS.length) - 1;
   return NO_CONTACT_LADDER_DAYS[idx];
 }
 
-// After this many consecutive no-contact attempts, stop the escalating ladder and
-// write the lead off as Dead — then resurface it once after a long cooldown.
-//   8 attempts ≈ industry "give-up" cutoff; 180-day (6mo) cooldown ≈ the long-cold
-//   B2B re-engagement window (and catches a contractor in a new season/project).
-const DEAD_AFTER_NO_CONTACT = 8;
+// After this many consecutive no-contact attempts, stop the ladder and write the
+// lead off as Dead — then resurface it once after a long cooldown.
+//   4 attempts (1 initial dial + 3 follow-ups); 180-day (6mo) cooldown ≈ the
+//   long-cold B2B re-engagement window (catches a contractor in a new season/project).
+const DEAD_AFTER_NO_CONTACT = 4;
 const DEAD_COOLDOWN_DAYS = 180;
 
 // On a win we promote the contact to an Active Client (handled in logCall) and
