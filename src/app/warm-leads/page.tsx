@@ -16,7 +16,7 @@ export default async function WarmLeadsPage() {
     orderBy: [{ nextFollowUpAt: { sort: "asc", nulls: "last" } }, { createdAt: "desc" }],
     take: 500,
     select: {
-      id: true, firstName: true, lastName: true, company: true, phone: true,
+      id: true, firstName: true, lastName: true, title: true, company: true, phone: true,
       status: true, stage: true, nextFollowUpAt: true,
     },
   });
@@ -25,6 +25,7 @@ export default async function WarmLeadsPage() {
     id: c.id,
     firstName: c.firstName,
     lastName: c.lastName,
+    title: c.title,
     company: c.company,
     phone: c.phone,
     status: c.status,

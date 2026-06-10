@@ -13,6 +13,7 @@ export interface WarmLead {
   id: string;
   firstName: string;
   lastName: string | null;
+  title: string | null;
   company: string | null;
   phone: string | null;
   status: ContactStatus;
@@ -52,7 +53,7 @@ function WarmRow({ lead: c }: { lead: WarmLead }) {
           <StatusBadge status={c.status} />
         </div>
         <div className="truncate text-sm text-slate-500">
-          {[c.company, c.phone].filter(Boolean).join(" · ") || "—"}
+          {[c.title, c.company, c.phone].filter(Boolean).join(" · ") || "—"}
         </div>
       </div>
 
