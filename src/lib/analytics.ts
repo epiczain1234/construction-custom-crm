@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { ActivityType, CallOutcome } from "@/generated/prisma/enums";
+import { ActivityType, CallOutcome, ContactStage } from "@/generated/prisma/enums";
 
 /** The company name shown against the benchmark on the dashboard. */
 export const COMPANY_NAME = "Alexander & Associates";
@@ -55,7 +55,13 @@ type LatestCall = { contactId: string; outcome: CallOutcome | null; userId: stri
  */
 async function latestCallPerContact(gte: Date, lt?: Date): Promise<LatestCall[]> {
   const activities = await prisma.activity.findMany({
-    where: { type: ActivityType.CALL, createdAt: { gte, ...(lt ? { lt } : {}) } },
+    where: {
+      type: ActivityType.CALL,
+      createdAt: { gte, ...(lt ? { lt } : {}) },
+      // Cold funnel only: exclude warm-lead nurture calls. Active clients stay in
+      // so a freshly-won deal (now ACTIVE_CLIENT) keeps showing as a funnel win.
+      contact: { stage: { not: ContactStage.WARM_LEAD } },
+    },
     orderBy: { createdAt: "desc" },
     select: { contactId: true, outcome: true, userId: true },
   });
@@ -89,7 +95,11 @@ async function countFollows(gte: Date, lt?: Date): Promise<number> {
   const range = { gte, ...(lt ? { lt } : {}) };
 
   const windowCalls = await prisma.activity.findMany({
-    where: { type: ActivityType.CALL, createdAt: range },
+    where: {
+      type: ActivityType.CALL,
+      createdAt: range,
+      contact: { stage: { not: ContactStage.WARM_LEAD } }, // warm follow-ups count as touches, not dials
+    },
     select: { contactId: true, createdAt: true },
   });
   let repeatDials = 0;
@@ -140,6 +150,126 @@ export async function getWeeklyAnalytics(now: Date = new Date()): Promise<Weekly
   const conversion = thisWeek.calls ? thisWeek.appointments / thisWeek.calls : 0;
 
   return { thisWeek, lastWeek, conversion, benchmark: BENCHMARK_CONVERSION };
+}
+
+export interface FunnelContact {
+  contactId: string;
+  name: string;
+  company: string | null;
+  phone: string | null;
+  outcome: CallOutcome | null;
+  byName: string;
+}
+
+/**
+ * The contacts behind this week's funnel — one row per contact, by its latest
+ * call this week (same basis as the headline counts). Powers the dashboard
+ * drill-down so a mis-logged outcome can be found and corrected.
+ */
+export async function getWeeklyFunnelContacts(now: Date = new Date()): Promise<FunnelContact[]> {
+  const latest = await latestCallPerContact(startOfWeek(now));
+  if (latest.length === 0) return [];
+
+  const [contacts, users] = await Promise.all([
+    prisma.contact.findMany({
+      where: { id: { in: latest.map((l) => l.contactId) } },
+      select: { id: true, firstName: true, lastName: true, company: true, phone: true },
+    }),
+    prisma.user.findMany({
+      where: { id: { in: [...new Set(latest.map((l) => l.userId))] } },
+      select: { id: true, name: true },
+    }),
+  ]);
+  const byContact = new Map(contacts.map((c) => [c.id, c]));
+  const byUser = new Map(users.map((u) => [u.id, u.name]));
+
+  return latest.map((l) => {
+    const c = byContact.get(l.contactId);
+    return {
+      contactId: l.contactId,
+      name: [c?.firstName, c?.lastName].filter(Boolean).join(" ") || "(unknown)",
+      company: c?.company ?? null,
+      phone: c?.phone ?? null,
+      outcome: l.outcome,
+      byName: byUser.get(l.userId) ?? "",
+    };
+  });
+}
+
+export interface FollowContact {
+  contactId: string;
+  name: string;
+  company: string | null;
+  /** repeat dial (a CALL on an already-called contact) vs a warm-lead "Log touch" */
+  kind: "dial" | "touch";
+  byName: string;
+}
+
+/**
+ * The accounts behind this week's "Follows" count — one row per follow EVENT
+ * (a lead followed twice shows twice), matching `countFollows`. Powers the
+ * dashboard drill-down so a follow can be opened and checked.
+ */
+export async function getWeeklyFollowContacts(now: Date = new Date()): Promise<FollowContact[]> {
+  const range = { gte: startOfWeek(now) };
+
+  const windowCalls = await prisma.activity.findMany({
+    where: {
+      type: ActivityType.CALL,
+      createdAt: range,
+      contact: { stage: { not: ContactStage.WARM_LEAD } }, // warm follow-ups count as touches, not dials
+    },
+    select: { contactId: true, createdAt: true, userId: true },
+  });
+
+  const events: { contactId: string; userId: string; kind: "dial" | "touch" }[] = [];
+  if (windowCalls.length) {
+    const ids = [...new Set(windowCalls.map((c) => c.contactId))];
+    const firsts = await prisma.activity.groupBy({
+      by: ["contactId"],
+      where: { type: ActivityType.CALL, contactId: { in: ids } },
+      _min: { createdAt: true },
+    });
+    const firstAt = new Map(firsts.map((f) => [f.contactId, f._min.createdAt?.getTime() ?? 0]));
+    for (const c of windowCalls) {
+      // A repeat dial = the contact had an earlier CALL than this one.
+      if ((firstAt.get(c.contactId) ?? 0) < c.createdAt.getTime()) {
+        events.push({ contactId: c.contactId, userId: c.userId, kind: "dial" });
+      }
+    }
+  }
+
+  const touches = await prisma.activity.findMany({
+    where: { type: ActivityType.TOUCH, createdAt: range },
+    select: { contactId: true, userId: true },
+  });
+  for (const t of touches) events.push({ contactId: t.contactId, userId: t.userId, kind: "touch" });
+
+  if (events.length === 0) return [];
+
+  const [contacts, users] = await Promise.all([
+    prisma.contact.findMany({
+      where: { id: { in: [...new Set(events.map((e) => e.contactId))] } },
+      select: { id: true, firstName: true, lastName: true, company: true },
+    }),
+    prisma.user.findMany({
+      where: { id: { in: [...new Set(events.map((e) => e.userId))] } },
+      select: { id: true, name: true },
+    }),
+  ]);
+  const byContact = new Map(contacts.map((c) => [c.id, c]));
+  const byUser = new Map(users.map((u) => [u.id, u.name]));
+
+  return events.map((e) => {
+    const c = byContact.get(e.contactId);
+    return {
+      contactId: e.contactId,
+      name: [c?.firstName, c?.lastName].filter(Boolean).join(" ") || "(unknown)",
+      company: c?.company ?? null,
+      kind: e.kind,
+      byName: byUser.get(e.userId) ?? "",
+    };
+  });
 }
 
 /** Percent change this vs last; null when last is 0 (avoid divide-by-zero). */

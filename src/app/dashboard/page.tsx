@@ -6,7 +6,7 @@ import { ContactStage, ContactStatus } from "@/generated/prisma/enums";
 import { DueList, type DueContact } from "@/components/dashboard/DueList";
 import { WeeklyMetrics } from "@/components/dashboard/WeeklyMetrics";
 import { PersonComparison } from "@/components/dashboard/PersonComparison";
-import { getWeeklyAnalytics, getPerPersonWeekly } from "@/lib/analytics";
+import { getWeeklyAnalytics, getPerPersonWeekly, getWeeklyFunnelContacts, getWeeklyFollowContacts } from "@/lib/analytics";
 
 export const dynamic = "force-dynamic";
 
@@ -25,7 +25,7 @@ export default async function DashboardPage() {
     phone: true, type: true, status: true, stage: true, nextFollowUpAt: true,
   } as const;
 
-  const [myLists, due, activeDue, warmDue, dueGroups, analytics, perPerson, callableCount] =
+  const [myLists, due, activeDue, warmDue, dueGroups, analytics, funnelContacts, followContacts, perPerson, callableCount] =
     await Promise.all([
       // Lists assigned to me, with total contact counts.
       prisma.segment.findMany({
@@ -59,6 +59,10 @@ export default async function DashboardPage() {
       }),
       // Company-wide weekly call/appointment analytics + funnel.
       getWeeklyAnalytics(now),
+      // The contacts behind this week's funnel (for the drill-down).
+      getWeeklyFunnelContacts(now),
+      // The accounts behind this week's follows (for the Follows drill-down).
+      getWeeklyFollowContacts(now),
       // Per-person head-to-head (calls + appointments this week).
       getPerPersonWeekly(now),
       // Everything cold-callable right now on my lists (never-called + due), for the CTA.
@@ -136,7 +140,7 @@ export default async function DashboardPage() {
       </div>
 
       {/* Company-wide weekly performance + funnel vs benchmark */}
-      <WeeklyMetrics data={analytics} />
+      <WeeklyMetrics data={analytics} funnelContacts={funnelContacts} followContacts={followContacts} />
 
       {/* Per-person head-to-head: calls + appointments this week */}
       <PersonComparison people={perPerson} />
