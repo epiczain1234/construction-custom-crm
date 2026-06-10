@@ -183,7 +183,7 @@ export async function logWarmTouch(contactId: string, note?: string) {
   await prisma.$transaction(async (tx) => {
     await tx.activity.create({
       data: {
-        type: ActivityType.NOTE,
+        type: ActivityType.TOUCH,
         note: note?.trim() || "Touched base (warm lead)",
         contactId,
         userId: user.id,

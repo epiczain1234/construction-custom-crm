@@ -58,6 +58,7 @@ enum ActivityType {
   CALL
   NOTE
   STATUS_CHANGE
+  TOUCH // a warm-lead follow-up outreach (counts toward "follows", not "calls")
 }
 
 enum ReminderStatus {

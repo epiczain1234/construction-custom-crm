@@ -21,12 +21,14 @@ export function WeeklyMetrics({ data }: { data: WeeklyAnalytics }) {
   const onTarget = conversion >= BENCHMARK.appointment;
   const calls = thisWeek.calls;
 
-  // Funnel stages with their benchmark rate (fraction of dials).
+  // Funnel stages with their benchmark rate (fraction of dials). `raw` rows show a
+  // plain count with no benchmark/percentage (follows aren't a fraction of dials).
   const stages = [
-    { label: "Calls (contacts)", actual: thisWeek.calls, rate: 1, baseline: true },
-    { label: "Connected", actual: thisWeek.connected, rate: BENCHMARK.connected, baseline: false },
-    { label: "Interested", actual: thisWeek.interested, rate: BENCHMARK.interested, baseline: false },
-    { label: "Appointments", actual: thisWeek.appointments, rate: BENCHMARK.appointment, baseline: false },
+    { label: "Calls (contacts)", actual: thisWeek.calls, rate: 1, baseline: true, raw: false },
+    { label: "Follows", actual: thisWeek.follows, rate: 0, baseline: true, raw: true },
+    { label: "Connected", actual: thisWeek.connected, rate: BENCHMARK.connected, baseline: false, raw: false },
+    { label: "Interested", actual: thisWeek.interested, rate: BENCHMARK.interested, baseline: false, raw: false },
+    { label: "Appointments", actual: thisWeek.appointments, rate: BENCHMARK.appointment, baseline: false, raw: false },
   ];
 
   return (
@@ -36,12 +38,20 @@ export function WeeklyMetrics({ data }: { data: WeeklyAnalytics }) {
       </h2>
 
       {/* Headline stats */}
-      <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+      <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <div className="rounded-xl border border-slate-200 bg-white p-4">
           <div className="text-3xl font-semibold text-slate-900">{thisWeek.calls}</div>
           <div className="text-sm text-slate-500">Calls this week</div>
           <div className="mt-1">
             <Delta thisVal={thisWeek.calls} lastVal={lastWeek.calls} />
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-slate-200 bg-white p-4">
+          <div className="text-3xl font-semibold text-indigo-600">{thisWeek.follows}</div>
+          <div className="text-sm text-slate-500">Follows this week</div>
+          <div className="mt-1">
+            <Delta thisVal={thisWeek.follows} lastVal={lastWeek.follows} />
           </div>
         </div>
 
@@ -96,7 +106,8 @@ export function WeeklyMetrics({ data }: { data: WeeklyAnalytics }) {
                   <tr key={s.label} className="border-b border-slate-100 last:border-0">
                     <td className="py-2 pr-4 font-medium text-slate-600">{s.label}</td>
                     <td className="px-2 py-2 text-right tabular-nums text-slate-700">
-                      {s.actual} <span className="text-slate-400">({pct(actualPct)})</span>
+                      {s.actual}
+                      {!s.raw && <span className="text-slate-400"> ({pct(actualPct)})</span>}
                     </td>
                     <td className="px-2 py-2 text-right tabular-nums text-slate-500">
                       {s.baseline ? (

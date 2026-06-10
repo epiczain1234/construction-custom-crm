@@ -27,7 +27,9 @@ export function ActivityTimeline({ activities }: { activities: TimelineActivity[
                 ? `📞 ${a.outcome ? CALL_OUTCOME_LABELS[a.outcome] : "Call"}`
                 : a.type === ActivityType.NOTE
                   ? "📝 Note"
-                  : "Status change"}
+                  : a.type === ActivityType.TOUCH
+                    ? "🔁 Follow-up"
+                    : "Status change"}
             </span>
             <span className="text-xs text-slate-400">
               {a.user.name} · {formatDateTime(a.createdAt)}

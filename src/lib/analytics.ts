@@ -39,6 +39,7 @@ export interface WeekStats {
   interested: number; // interested or better
   appointments: number;
   won: number;
+  follows: number; // follow-up outreaches: repeat dials + warm "Log touch" touches
 }
 
 /** One contact's most recent CALL in a window: the outcome that "counts" + who logged it. */
@@ -68,7 +69,7 @@ async function latestCallPerContact(gte: Date, lt?: Date): Promise<LatestCall[]>
   return latest;
 }
 
-function tally(calls: LatestCall[]): WeekStats {
+function tally(calls: LatestCall[]): Omit<WeekStats, "follows"> {
   const c = (o: CallOutcome) => calls.filter((x) => x.outcome === o).length;
   const appointments = c(CallOutcome.APPOINTMENT_SET);
   const won = c(CallOutcome.CLOSED_WON);
@@ -76,6 +77,39 @@ function tally(calls: LatestCall[]): WeekStats {
   const connected =
     interested + c(CallOutcome.NOT_INTERESTED) + c(CallOutcome.CALLBACK_REQUESTED);
   return { calls: calls.length, connected, interested, appointments, won };
+}
+
+/**
+ * Follow-up outreaches in a window: a "follow" is either a repeat dial (a CALL on
+ * a contact that already had an earlier CALL) or a warm-lead TOUCH ("Log touch").
+ * Counted as events (a lead followed up twice = 2), unlike `calls` which de-dupes
+ * to one per contact.
+ */
+async function countFollows(gte: Date, lt?: Date): Promise<number> {
+  const range = { gte, ...(lt ? { lt } : {}) };
+
+  const windowCalls = await prisma.activity.findMany({
+    where: { type: ActivityType.CALL, createdAt: range },
+    select: { contactId: true, createdAt: true },
+  });
+  let repeatDials = 0;
+  if (windowCalls.length) {
+    const ids = [...new Set(windowCalls.map((c) => c.contactId))];
+    const firsts = await prisma.activity.groupBy({
+      by: ["contactId"],
+      where: { type: ActivityType.CALL, contactId: { in: ids } },
+      _min: { createdAt: true },
+    });
+    const firstAt = new Map(firsts.map((f) => [f.contactId, f._min.createdAt?.getTime() ?? 0]));
+    // A window CALL is a "repeat" if the contact had any earlier CALL than this one.
+    repeatDials = windowCalls.filter((c) => (firstAt.get(c.contactId) ?? 0) < c.createdAt.getTime()).length;
+  }
+
+  const touches = await prisma.activity.count({
+    where: { type: ActivityType.TOUCH, createdAt: range },
+  });
+
+  return repeatDials + touches;
 }
 
 export interface WeeklyAnalytics {
@@ -94,13 +128,15 @@ export async function getWeeklyAnalytics(now: Date = new Date()): Promise<Weekly
   const thisWeekStart = startOfWeek(now);
   const lastWeekStart = new Date(thisWeekStart.getTime() - WEEK_MS);
 
-  const [thisCalls, lastCalls] = await Promise.all([
+  const [thisCalls, lastCalls, thisFollows, lastFollows] = await Promise.all([
     latestCallPerContact(thisWeekStart),
     latestCallPerContact(lastWeekStart, thisWeekStart),
+    countFollows(thisWeekStart),
+    countFollows(lastWeekStart, thisWeekStart),
   ]);
 
-  const thisWeek = tally(thisCalls);
-  const lastWeek = tally(lastCalls);
+  const thisWeek: WeekStats = { ...tally(thisCalls), follows: thisFollows };
+  const lastWeek: WeekStats = { ...tally(lastCalls), follows: lastFollows };
   const conversion = thisWeek.calls ? thisWeek.appointments / thisWeek.calls : 0;
 
   return { thisWeek, lastWeek, conversion, benchmark: BENCHMARK_CONVERSION };
