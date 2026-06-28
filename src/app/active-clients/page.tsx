@@ -18,6 +18,12 @@ export default async function ActiveClientsPage() {
       status: true, stage: true, nextFollowUpAt: true,
       milestoneDocsFilledAt: true, milestonePaymentCollectedAt: true,
       milestoneKickoffScheduledAt: true, milestoneFinishedServingAt: true,
+      activities: {
+        where: { note: { not: null } },
+        orderBy: { createdAt: "desc" },
+        take: 1,
+        select: { note: true, createdAt: true },
+      },
     },
   });
 
@@ -30,6 +36,8 @@ export default async function ActiveClientsPage() {
     status: c.status,
     stage: c.stage,
     nextFollowUpAt: c.nextFollowUpAt?.toISOString() ?? null,
+    lastNote: c.activities[0]?.note ?? null,
+    lastNoteAt: c.activities[0]?.createdAt.toISOString() ?? null,
     milestones: {
       DOCS: c.milestoneDocsFilledAt?.toISOString() ?? null,
       PAYMENT: c.milestonePaymentCollectedAt?.toISOString() ?? null,

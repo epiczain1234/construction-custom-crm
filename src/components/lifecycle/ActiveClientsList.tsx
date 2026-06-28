@@ -6,7 +6,7 @@ import { StatusBadge } from "@/components/contacts/StatusBadge";
 import { MilestoneChecklist, type MilestoneState } from "@/components/contacts/MilestoneChecklist";
 import { StageSelect } from "@/components/lifecycle/StageSelect";
 import { ScheduleControl } from "@/components/lifecycle/ScheduleControl";
-import { formatDue } from "@/lib/format";
+import { formatDue, formatDate } from "@/lib/format";
 
 export interface ActiveClient {
   id: string;
@@ -17,6 +17,8 @@ export interface ActiveClient {
   status: ContactStatus;
   stage: ContactStage;
   nextFollowUpAt: string | null;
+  lastNote: string | null;
+  lastNoteAt: string | null;
   milestones: MilestoneState;
 }
 
@@ -48,6 +50,19 @@ export function ActiveClientsList({ clients }: { clients: ActiveClient[] }) {
                 </div>
               </div>
               <StatusBadge status={c.status} />
+            </div>
+
+            <div className="mt-3 border-t border-slate-100 pt-3">
+              {c.lastNote ? (
+                <>
+                  <p className="line-clamp-2 text-sm text-slate-700">{c.lastNote}</p>
+                  <p className="mt-0.5 text-xs text-slate-400">
+                    Last note · {formatDate(c.lastNoteAt)}
+                  </p>
+                </>
+              ) : (
+                <p className="text-sm text-slate-400">No notes yet</p>
+              )}
             </div>
 
             <div className="mt-3 border-t border-slate-100 pt-3">
